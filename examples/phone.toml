@@ -1,0 +1,17 @@
+instance_name = "Example network"
+hostname = "android"
+ipv4 = "10.42.0.2/24"
+dhcp = false
+listeners = ["udp://0.0.0.0:11010", "tcp://0.0.0.0:11010"]
+
+[network_identity]
+network_name = "example-network"
+network_secret = "CHANGE-ME"
+
+[[peer]]
+uri = "udp://relay.example.com:11010"
+
+[flags]
+mtu = 1360
+latency_first = true
+default_protocol = "udp"

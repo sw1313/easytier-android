@@ -1,0 +1,19 @@
+[package]
+name = "easytier-material-native"
+version = "0.1.0"
+edition.workspace = true
+
+[lib]
+name = "easytier_mobile"
+crate-type = ["cdylib"]
+
+[dependencies]
+easytier = { path = "../core/easytier" }
+jni = "0.21"
+serde_json = "1"
+anyhow = "1"
+libc = "0.2"
+toml = "0.8.12"
+tokio = { version = "1", features = ["rt-multi-thread", "time"] }
+uuid = "1"
+async-trait = "0.1"
