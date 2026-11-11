@@ -1328,7 +1328,6 @@ dependencies = [
  "async-trait",
  "easytier",
  "jni",
- "libc",
  "serde_json",
  "tokio",
  "toml 0.8.19",

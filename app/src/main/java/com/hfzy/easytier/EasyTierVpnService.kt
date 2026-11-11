@@ -58,7 +58,7 @@ class EasyTierVpnService : VpnService() {
                     if (current != null) poll()
                 } catch (error: Exception) {
                     if (error is CancellationException) throw error
-                    stopCore()
+                    runCatching { stopCore() }
                     val message = error.message ?: "VPN 启动失败"
                     AppState.log(message)
                     AppState.publish(this@EasyTierVpnService, VpnState(phase = "error", error = message))
@@ -225,13 +225,17 @@ class EasyTierVpnService : VpnService() {
     }
 
     private fun stopCore() {
-        NativeCore.request("stop")
-        tun?.close()
-        tun = null
-        routeKey = ""
-        current = null
-        cloudOn = false
-        AppState.cloud.value = "未连接"
+        try {
+            NativeCore.request("stop")
+        } finally {
+            val descriptor = tun
+            tun = null
+            routeKey = ""
+            current = null
+            cloudOn = false
+            AppState.cloud.value = "未连接"
+            descriptor?.close()
+        }
     }
 
     private fun showNotification(message: String, initial: Boolean = false) {

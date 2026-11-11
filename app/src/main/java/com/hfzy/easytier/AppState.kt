@@ -19,6 +19,12 @@ object NativeCore {
     @Synchronized fun load(context: Context) {
         if (loaded) return
         var installed = CoreUpdates.activeLibrary(context)
+        if (installed != null && runCatching {
+            CoreCatalog.compareVersions(CoreUpdates.version(context), CoreUpdates.BUNDLED_VERSION) < 0
+        }.getOrDefault(true)) {
+            CoreUpdates.rollback(context)
+            installed = null
+        }
         repeat(2) {
             val candidate = installed ?: return@repeat
             try {

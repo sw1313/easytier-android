@@ -12,16 +12,55 @@ class ProbeInstrumentation : Instrumentation() {
         this.arguments = arguments ?: Bundle()
         start()
     }
+    private fun shell(command: String): String = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+        uiAutomation.executeShellCommand(command)
+    ).bufferedReader().use { it.readText() }
+
     override fun onStart() {
         val results = Bundle()
         try {
             val context = targetContext
             NativeCore.load(context)
+            if (arguments.getString("vpnLifecycle") == "true") {
+                check(android.net.VpnService.prepare(context) == null) { "Grant VPN permission before this test" }
+                val connectivity = context.getSystemService(android.net.ConnectivityManager::class.java)
+                fun hasVpn(): Boolean = connectivity.allNetworks.any { network ->
+                    connectivity.getNetworkCapabilities(network)
+                        ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
+                }
+                fun awaitCondition(message: String, predicate: () -> Boolean) {
+                    repeat(80) {
+                        if (predicate()) return
+                        Thread.sleep(100)
+                    }
+                    error(message)
+                }
+                val profile = ProfileStore(context).save("VPN 生命周期验证", """
+                    ipv4 = "10.42.0.2/24"
+                    dhcp = false
+                    listeners = []
+                    [flags]
+                    enable_ipv6 = false
+                """.trimIndent(), "vpn-lifecycle-regression")
+                try {
+                    repeat(3) {
+                        runOnMainSync { EasyTierVpnService.connect(context, profile.id) }
+                        awaitCondition("Android VPN network was not established") { hasVpn() }
+                        check(AppState.vpn.value.active)
+                        runOnMainSync { EasyTierVpnService.disconnect(context) }
+                        awaitCondition("App did not report disconnection") { !AppState.vpn.value.active }
+                        awaitCondition("Android VPN network remains after disconnect") { !hasVpn() }
+                        check(!NativeCore.request("snapshot").optBoolean("running"))
+                    }
+                    results.putString("result", "PASS 3 real TUN connect/disconnect cycles / system VPN removed / core stopped / adapter ${NativeCore.request("version").getInt("adapter_build")}")
+                } finally {
+                    runOnMainSync { EasyTierVpnService.disconnect(context) }
+                }
+                finish(Activity.RESULT_OK, results)
+                return
+            }
             if (arguments.getString("tile") == "true") {
                 val component = "com.hfzy.easytier/.EasyTierTileService"
-                fun shell(command: String): String = android.os.ParcelFileDescriptor.AutoCloseInputStream(
-                    uiAutomation.executeShellCommand(command)
-                ).bufferedReader().use { it.readText() }
                 fun awaitTile(state: Int, subtitle: String) {
                     repeat(30) {
                         val line = shell("dumpsys activity service com.android.systemui/.SystemUIService")
@@ -40,7 +79,11 @@ class ProbeInstrumentation : Instrumentation() {
                     awaitTile(1, "点击连接")
                     android.service.quicksettings.TileService.requestListeningState(context,
                         android.content.ComponentName(context, EasyTierTileService::class.java))
-                    Thread.sleep(500)
+                    val listeningDeadline = android.os.SystemClock.elapsedRealtime() + 5000
+                    while (AppState.vpn.subscriptionCount.value == 0 && android.os.SystemClock.elapsedRealtime() < listeningDeadline) {
+                        Thread.sleep(50)
+                    }
+                    check(AppState.vpn.subscriptionCount.value > 0) { "Tile service did not begin observing VPN state" }
                     // Keep the existing binding while changing the flow, as with a cached QS panel.
                     runOnMainSync { AppState.vpn.value = VpnState(phase = "connecting") }
                     awaitTile(2, "连接中")
@@ -116,8 +159,8 @@ class ProbeInstrumentation : Instrumentation() {
                 return
             }
             if (arguments.getString("updated") == "true") {
-                check(NativeCore.loadedVersion == "2.6.4-md2")
-                check(NativeCore.request("version").getInt("adapter_build") == 2)
+                check(NativeCore.loadedVersion == "2.6.4-md3")
+                check(NativeCore.request("version").getInt("adapter_build") == 3)
                 check(CoreCatalog.check(context).phase == UpdatePhase.CURRENT)
                 results.putString("result", "PASS updated JNI loaded / current-version check")
                 finish(Activity.RESULT_OK, results)

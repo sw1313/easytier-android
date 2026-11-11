@@ -16,7 +16,7 @@ import java.util.UUID
 import java.util.zip.ZipFile
 
 object CoreUpdates {
-    const val BUNDLED_VERSION = "2.6.4-md2"
+    const val BUNDLED_VERSION = "2.6.4-md3"
     val abi: String
         get() = (if (Process.is64Bit()) Build.SUPPORTED_64_BIT_ABIS else Build.SUPPORTED_32_BIT_ABIS)
             .firstOrNull() ?: error("无法识别当前应用的核心架构")

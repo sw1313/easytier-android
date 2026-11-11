@@ -54,7 +54,7 @@ fn metadata(cfg: &TomlConfigLoader) -> Value {
 
 fn dispatch(method: &str, payload: &str) -> anyhow::Result<Value> {
     if method == "version" {
-        return Ok(json!({"core": easytier::VERSION, "api": 1, "adapter_build": 2}));
+        return Ok(json!({"core": easytier::VERSION, "api": 1, "adapter_build": 3}));
     }
     if method == "remote" { return remote::call(payload); }
     if method == "cloudStart" {
@@ -135,14 +135,11 @@ fn dispatch(method: &str, payload: &str) -> anyhow::Result<Value> {
             let id = *ACTIVE.lock().unwrap();
             let id = id
                 .ok_or_else(|| anyhow::anyhow!("VPN 尚未启动"))?;
-            // Java retains the original descriptor. The Rust TUN owns this duplicate.
-            let original: i32 = payload.parse()?;
-            let fd = unsafe { libc::dup(original) };
-            anyhow::ensure!(fd >= 0, "无法复制 VPN 文件描述符");
-            if let Err(error) = manager.set_tun_fd(&id, fd) {
-                unsafe { libc::close(fd); }
-                return Err(error);
-            }
+            // EasyTier's mobile TUN borrows this fd with close_fd_on_drop(false).
+            // Java owns it and closes it after the core stops, including on errors.
+            let fd: i32 = payload.parse()?;
+            anyhow::ensure!(fd > 0, "无效的 VPN 文件描述符");
+            manager.set_tun_fd(&id, fd)?;
             Ok(json!({}))
         }
         "snapshot" => {

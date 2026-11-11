@@ -5,8 +5,8 @@
 应用分别显示官方核心版本和 Android 适配构建号。
 
 - `2.6.4` 表示官方 EasyTier 核心版本。
-- 适配构建 `2` 表示 Android JNI 与打包层的构建编号。
-- `2.6.4-md2` 是签名包内部标识。
+- 适配构建 `3` 表示 Android JNI 与打包层的构建编号。
+- `2.6.4-md3` 是签名包内部标识。
 
 官方版本提升时显示“下载核心更新”。同一官方版本的适配构建提升时显示“更新适配组件”。默认检查官方稳定版，兼容包准备状态会显示在应用中。
 
@@ -22,6 +22,8 @@
 
 下载流程校验目录签名、ZIP 哈希、内部 manifest 签名和动态库哈希。应用更新后重新启动，并恢复原有网络与出口节点设置。加载失败时尝试恢复上个可用核心。
 
+应用升级时会比较已选择的独立核心与内置核心版本，优先采用较新的内置核心。1.2.4 内置适配构建 3，包含断开 VPN 后释放 TUN 接口的修复。
+
 ## 生成核心包
 
 先编译三个架构的动态库，再用发布者本地的 RSA 签名目录生成包。
@@ -30,9 +32,9 @@
 ./build-native.ps1 -Architecture aarch64
 ./build-native.ps1 -Architecture armv7
 ./build-native.ps1 -Architecture x86_64
-./package-core.ps1 -Abi arm64-v8a -Version 2.6.4-md2 -SigningDirectory C:/Signing/EasyTier
-./package-core.ps1 -Abi armeabi-v7a -Version 2.6.4-md2 -SigningDirectory C:/Signing/EasyTier
-./package-core.ps1 -Abi x86_64 -Version 2.6.4-md2 -SigningDirectory C:/Signing/EasyTier
+./package-core.ps1 -Abi arm64-v8a -Version 2.6.4-md3 -SigningDirectory C:/Signing/EasyTier
+./package-core.ps1 -Abi armeabi-v7a -Version 2.6.4-md3 -SigningDirectory C:/Signing/EasyTier
+./package-core.ps1 -Abi x86_64 -Version 2.6.4-md3 -SigningDirectory C:/Signing/EasyTier
 ```
 
 签名目录提供 PKCS#8 PEM 格式的 `core-signing-private.pem`。对应的公钥需要与应用内置校验公钥匹配。
@@ -42,9 +44,9 @@
 准备 Markdown 或文本更新说明，然后生成签名目录。
 
 ```powershell
-./publish-catalog.ps1 -Version 2.6.4-md2 -CoreVersion 2.6.4 -NotesFile docs/core-2.6.4-md2.md -SigningDirectory C:/Signing/EasyTier
+./publish-catalog.ps1 -Version 2.6.4-md3 -CoreVersion 2.6.4 -NotesFile docs/core-2.6.4-md3.md -SigningDirectory C:/Signing/EasyTier
 ```
 
-将 ZIP 包上传到 `core-v2.6.4-md2` Release，将生成的 `dist/stable.json` 保存为 `updates/stable.json` 并提交。发布新版本时应采用新的版本标识和资产文件名。
+将 ZIP 包上传到 `core-v2.6.4-md3` Release，将生成的 `dist/stable.json` 保存为 `updates/stable.json` 并提交。发布新版本时应采用新的版本标识和资产文件名。
 
 升级官方核心源码后需要编译、验证对应的 Android JNI 包。应用使用 JNI API 1，目录会按 API、应用版本和手机架构选择兼容包。

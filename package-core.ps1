@@ -1,6 +1,6 @@
 param(
     [ValidateSet('arm64-v8a', 'armeabi-v7a', 'x86_64')][string]$Abi = 'arm64-v8a',
-    [string]$Version = '2.6.4-md2',
+    [string]$Version = '2.6.4-md3',
     [string]$OutputDirectory = (Join-Path $PSScriptRoot 'dist'),
     [Parameter(Mandatory)][string]$SigningDirectory
 )
