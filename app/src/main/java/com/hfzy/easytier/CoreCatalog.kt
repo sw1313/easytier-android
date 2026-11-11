@@ -50,7 +50,7 @@ object CoreCatalog {
         CoreUpdates.verifySignature(context, bytes, Base64.decode(envelope.getString("signature"), Base64.DEFAULT))
         val catalog = JSONObject(String(bytes, Charsets.UTF_8))
         require(catalog.getInt("schema") == 1 && catalog.getString("channel") == "stable") { "更新目录格式不兼容" }
-        val abi = Build.SUPPORTED_ABIS.first()
+        val abi = CoreUpdates.abi
         return catalog.array("releases").objects().filter {
             it.optInt("api") == 1 && it.optInt("minAppVersionCode", 1) <= BuildConfig.VERSION_CODE &&
                 it.optInt("minSdk", 26) <= Build.VERSION.SDK_INT && it.getJSONObject("assets").has(abi)

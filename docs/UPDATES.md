@@ -16,18 +16,22 @@
 
 - 官方发布信息来自 `https://api.github.com/repos/EasyTier/EasyTier/releases/latest`。
 - 签名目录来自本仓库 `updates/stable.json`。
-- Android 核心包由本仓库 GitHub Releases 提供。
+- Android 核心包由本仓库 GitHub Releases 提供，支持 `arm64-v8a`、`armeabi-v7a` 和 `x86_64`。
+
+更新包按当前应用进程的架构选择。在支持 32 位应用的 64 位设备上安装 ARMv7 APK 后，更新器会继续使用 ARMv7 核心。
 
 下载流程校验目录签名、ZIP 哈希、内部 manifest 签名和动态库哈希。应用更新后重新启动，并恢复原有网络与出口节点设置。加载失败时尝试恢复上个可用核心。
 
 ## 生成核心包
 
-先编译两个架构的动态库，再用发布者本地的 RSA 签名目录生成包。
+先编译三个架构的动态库，再用发布者本地的 RSA 签名目录生成包。
 
 ```powershell
 ./build-native.ps1 -Architecture aarch64
+./build-native.ps1 -Architecture armv7
 ./build-native.ps1 -Architecture x86_64
 ./package-core.ps1 -Abi arm64-v8a -Version 2.6.4-md2 -SigningDirectory C:/Signing/EasyTier
+./package-core.ps1 -Abi armeabi-v7a -Version 2.6.4-md2 -SigningDirectory C:/Signing/EasyTier
 ./package-core.ps1 -Abi x86_64 -Version 2.6.4-md2 -SigningDirectory C:/Signing/EasyTier
 ```
 

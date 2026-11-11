@@ -17,6 +17,73 @@ class ProbeInstrumentation : Instrumentation() {
         try {
             val context = targetContext
             NativeCore.load(context)
+            if (arguments.getString("tile") == "true") {
+                val component = "com.hfzy.easytier/.EasyTierTileService"
+                fun shell(command: String): String = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+                    uiAutomation.executeShellCommand(command)
+                ).bufferedReader().use { it.readText() }
+                fun awaitTile(state: Int, subtitle: String) {
+                    repeat(30) {
+                        val line = shell("dumpsys activity service com.android.systemui/.SystemUIService")
+                            .lineSequence().firstOrNull { it.contains("spec=custom(") && it.contains("EasyTierTileService") }
+                        if (line != null && Regex(",state=$state(?:,|\\])").containsMatchIn(line) && line.contains(subtitle)) return
+                        Thread.sleep(200)
+                    }
+                    error("Quick Settings tile did not reach state $state / $subtitle")
+                }
+                fun publish(state: VpnState) = runOnMainSync { AppState.publish(context, state) }
+                try {
+                    shell("cmd statusbar add-tile $component")
+                    shell("cmd statusbar set-tiles custom($component)")
+                    shell("cmd statusbar expand-settings")
+                    publish(VpnState())
+                    awaitTile(1, "点击连接")
+                    android.service.quicksettings.TileService.requestListeningState(context,
+                        android.content.ComponentName(context, EasyTierTileService::class.java))
+                    Thread.sleep(500)
+                    // Keep the existing binding while changing the flow, as with a cached QS panel.
+                    runOnMainSync { AppState.vpn.value = VpnState(phase = "connecting") }
+                    awaitTile(2, "连接中")
+                    runOnMainSync { AppState.vpn.value = VpnState() }
+                    awaitTile(1, "点击连接")
+                    repeat(3) {
+                        publish(VpnState(phase = "connecting"))
+                        awaitTile(2, "连接中")
+                        publish(VpnState(phase = "connected", ip = "10.42.0.2/24"))
+                        awaitTile(2, "10.42.0.2")
+                        publish(VpnState())
+                        awaitTile(1, "点击连接")
+                    }
+                    publish(VpnState(phase = "error", error = "test-only"))
+                    awaitTile(1, "连接失败")
+                    shell("cmd statusbar collapse")
+                    publish(VpnState(phase = "connected", ip = "10.42.0.3/24"))
+                    shell("cmd statusbar expand-settings")
+                    awaitTile(2, "10.42.0.3")
+                    publish(VpnState())
+                    awaitTile(1, "点击连接")
+                    val profile = ProfileStore(context).save("磁贴验证", """
+                        ipv4 = "10.42.0.2/24"
+                        dhcp = false
+                        listeners = []
+                        [flags]
+                        no_tun = true
+                    """.trimIndent(), "tile-regression")
+                    runOnMainSync { EasyTierVpnService.connect(context, profile.id) }
+                    awaitTile(2, "连接中")
+                    shell("cmd statusbar click-tile $component")
+                    awaitTile(1, "点击连接")
+                    check(!AppState.vpn.value.active)
+                    check(CoreUpdates.abi in android.os.Build.SUPPORTED_ABIS)
+                    results.putString("result", "PASS live tile highlight / disconnect / error / reopen / actual service stop / process ABI")
+                } finally {
+                    runOnMainSync { EasyTierVpnService.disconnect(context) }
+                    publish(VpnState())
+                    shell("cmd statusbar collapse")
+                }
+                finish(Activity.RESULT_OK, results)
+                return
+            }
             if (arguments.getString("updater") == "true") {
                 check(CoreCatalog.compareVersions("2.10.0", "2.9.9") > 0)
                 check(CoreCatalog.compareVersions("2.6.4-md2", "2.6.4-md1") > 0)

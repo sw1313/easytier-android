@@ -14,7 +14,7 @@
 
 ## 安装与使用
 
-从 Releases 下载 ARM64 APK，安装后在“网络”页面导入 TOML 或新建配置，允许系统 VPN 授权和通知权限。快捷磁贴入口位于设置页顶部。[下载安装包](https://github.com/sw1313/easytier-android/releases/latest)
+从 Releases 下载与设备架构匹配的 APK，ARM64 使用 `arm64-v8a`，32 位 ARMv7 使用 `armeabi-v7a`。安装后在“网络”页面导入 TOML 或新建配置，允许系统 VPN 授权和通知权限。快捷磁贴入口位于设置页顶部，连接状态变化时实时更新高亮。[下载安装包](https://github.com/sw1313/easytier-android/releases/latest)
 
 首页“出口节点”可以选择互联网出口并设置 DNS。出口设备需要配置 EasyTier 的 `enable_exit_node`、系统转发和源 NAT。当前出口通道提供 IPv4 互联网出口，IPv6 默认路由由 VPN 管理。
 

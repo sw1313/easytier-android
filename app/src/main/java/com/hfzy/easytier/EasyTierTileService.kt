@@ -6,21 +6,47 @@ import android.net.VpnService
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.launch
 
 class EasyTierTileService : TileService() {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var stateJob: Job? = null
+
     override fun onStartListening() {
         super.onStartListening()
-        val state = AppState.vpn.value
+        stateJob?.cancel()
+        // Active tiles can stop listening while their service remains bound.
+        // Keep observing until destruction so the cached tile also receives changes.
+        stateJob = scope.launch {
+            AppState.vpn.distinctUntilChangedBy { it.phase to it.ip }.collect { updateTile(it) }
+        }
+    }
+
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
+    }
+
+    private fun updateTile(vpn: VpnState) {
         qsTile?.apply {
-            if (Build.VERSION.SDK_INT >= 30) stateDescription = when (state.phase) {
+            if (Build.VERSION.SDK_INT >= 30) stateDescription = when (vpn.phase) {
                 "connected" -> "已连接"
                 "connecting" -> "连接中"
+                "error" -> "连接失败"
                 else -> "已断开"
             }
-            this.state = if (AppState.vpn.value.active) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-            if (Build.VERSION.SDK_INT >= 29) subtitle = when (AppState.vpn.value.phase) {
-                "connected" -> AppState.vpn.value.ip.substringBefore('/')
+            state = if (vpn.active) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
+            if (Build.VERSION.SDK_INT >= 29) subtitle = when (vpn.phase) {
+                "connected" -> vpn.ip.substringBefore('/')
                 "connecting" -> "连接中…"
+                "error" -> "连接失败"
                 else -> "点击连接"
             }
             updateTile()

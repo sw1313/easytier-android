@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = 'Stop'
 if (!$BaseUrl) { $BaseUrl = "https://github.com/$Repository/releases/download/core-v$Version" }
 $assets = [ordered]@{}
-foreach ($abi in @('arm64-v8a', 'x86_64')) {
+foreach ($abi in @('arm64-v8a', 'armeabi-v7a', 'x86_64')) {
     $name = "EasyTier-core-$Version-$abi.zip"
     $file = Join-Path $Directory $name
     if (!(Test-Path -LiteralPath $file)) { throw "Missing core package $name" }

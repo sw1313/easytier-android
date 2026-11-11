@@ -8,7 +8,7 @@
 - Android NDK 29.0.14206865
 - Rust 1.95.0
 
-Gradle Wrapper 使用 8.11.1。原生核心支持 ARM64 与 x86_64，最低 Android 8.0，目标 Android 15。
+Gradle Wrapper 使用 8.11.1。原生核心支持 ARM64、ARMv7 与 x86_64，最低 Android 8.0，目标 Android 15。
 
 ## 获取源码
 
@@ -34,9 +34,16 @@ sdk.dir=C:/Android/Sdk
 ```
 
 ```powershell
-rustup target add --toolchain 1.95.0 aarch64-linux-android x86_64-linux-android
+rustup target add --toolchain 1.95.0 aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 ./build-native.ps1 -Architecture aarch64
 ./gradlew.bat :app:assembleDebug -Pabi=arm64-v8a
+```
+
+32 位 ARMv7 构建使用 `armeabi-v7a`。
+
+```powershell
+./build-native.ps1 -Architecture armv7
+./gradlew.bat :app:assembleRelease -Pabi=armeabi-v7a
 ```
 
 模拟器构建使用 x86_64。

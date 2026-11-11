@@ -1,14 +1,19 @@
-param([ValidateSet('aarch64', 'x86_64')][string]$Architecture = 'aarch64')
+param([ValidateSet('aarch64', 'armv7', 'x86_64')][string]$Architecture = 'aarch64')
 $ErrorActionPreference = 'Stop'
 $env:PATH = "$env:USERPROFILE\.cargo\bin;" + $env:PATH
 $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA 'Android/Sdk' }
 $ndkBin = Join-Path $sdk 'ndk/29.0.14206865/toolchains/llvm/prebuilt/windows-x86_64/bin'
-$target = "$Architecture-linux-android"
+$platform = @{
+    aarch64 = @{ Target = 'aarch64-linux-android'; Compiler = 'aarch64-linux-android'; Abi = 'arm64-v8a' }
+    armv7 = @{ Target = 'armv7-linux-androideabi'; Compiler = 'armv7a-linux-androideabi'; Abi = 'armeabi-v7a' }
+    x86_64 = @{ Target = 'x86_64-linux-android'; Compiler = 'x86_64-linux-android'; Abi = 'x86_64' }
+}[$Architecture]
+$target = $platform.Target
 $targetKey = $target.Replace('-', '_')
-$abi = if ($Architecture -eq 'aarch64') { 'arm64-v8a' } else { 'x86_64' }
-[Environment]::SetEnvironmentVariable("CARGO_TARGET_$($targetKey.ToUpper())_LINKER", "$ndkBin\$($target)26-clang.cmd", 'Process')
-[Environment]::SetEnvironmentVariable("CC_$targetKey", "$ndkBin\$($target)26-clang.cmd", 'Process')
-[Environment]::SetEnvironmentVariable("CXX_$targetKey", "$ndkBin\$($target)26-clang++.cmd", 'Process')
+$abi = $platform.Abi
+[Environment]::SetEnvironmentVariable("CARGO_TARGET_$($targetKey.ToUpper())_LINKER", "$ndkBin\$($platform.Compiler)26-clang.cmd", 'Process')
+[Environment]::SetEnvironmentVariable("CC_$targetKey", "$ndkBin\$($platform.Compiler)26-clang.cmd", 'Process')
+[Environment]::SetEnvironmentVariable("CXX_$targetKey", "$ndkBin\$($platform.Compiler)26-clang++.cmd", 'Process')
 [Environment]::SetEnvironmentVariable("AR_$targetKey", "$ndkBin\llvm-ar.exe", 'Process')
 $flags = @('-C', 'link-arg=-Wl,-z,max-page-size=16384')
 $mappings = @(

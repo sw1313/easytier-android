@@ -2,6 +2,7 @@ package com.hfzy.easytier
 
 import android.content.Context
 import android.os.Build
+import android.os.Process
 import android.util.Base64
 import org.json.JSONObject
 import java.io.File
@@ -16,6 +17,9 @@ import java.util.zip.ZipFile
 
 object CoreUpdates {
     const val BUNDLED_VERSION = "2.6.4-md2"
+    val abi: String
+        get() = (if (Process.is64Bit()) Build.SUPPORTED_64_BIT_ABIS else Build.SUPPORTED_32_BIT_ABIS)
+            .firstOrNull() ?: error("无法识别当前应用的核心架构")
     private const val LIMIT = 120 * 1024 * 1024
     private fun prefs(context: Context) = context.getSharedPreferences("core", Context.MODE_PRIVATE)
     fun version(context: Context): String = prefs(context).getString("version", BUNDLED_VERSION).orEmpty()
@@ -42,8 +46,7 @@ object CoreUpdates {
             verifySignature(context, manifestBytes, signatureBytes)
             val manifest = JSONObject(String(manifestBytes, Charsets.UTF_8))
             require(manifest.getInt("api") == 1) { "核心接口版本不兼容" }
-            val abi = manifest.getString("abi")
-            require(abi == Build.SUPPORTED_ABIS.first()) { "该核心不适用于此手机架构" }
+            require(manifest.getString("abi") == abi) { "该核心不适用于当前应用架构" }
             version = manifest.getString("version")
             require(version.isNotBlank() && version.length <= 80)
             require(expectedVersion == null || expectedVersion == version) { "更新包版本与更新目录不一致" }
