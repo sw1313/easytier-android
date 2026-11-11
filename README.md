@@ -12,6 +12,16 @@
 - 浅色、深色与跟随系统主题。
 - 官方稳定版检查、独立适配组件更新、签名验证和更新后重连。
 
+## 界面截图
+
+截图来自 Android 模拟器，使用 `examples/phone.toml` 中的通用示例配置。
+
+| 概览 | 可视化配置 |
+| --- | --- |
+| <img src="docs/screenshots/overview.png" alt="概览页面与示例网络" width="280" /> | <img src="docs/screenshots/configuration.png" alt="可视化网络配置页面" width="280" /> |
+| 设置与核心更新 | 关闭状态的快捷磁贴 |
+| <img src="docs/screenshots/settings.png" alt="设置页面与官方核心版本检查" width="280" /> | <img src="docs/screenshots/quick-settings-off.png" alt="断开后显示灰色的 EasyTier 快捷磁贴" width="280" /> |
+
 ## 安装与使用
 
 从 Releases 下载与设备架构匹配的 APK，ARM64 使用 `arm64-v8a`，32 位 ARMv7 使用 `armeabi-v7a`。安装后在“网络”页面导入 TOML 或新建配置，允许系统 VPN 授权和通知权限。快捷磁贴入口位于设置页顶部，连接状态变化时实时更新高亮。[下载安装包](https://github.com/sw1313/easytier-android/releases/latest)
