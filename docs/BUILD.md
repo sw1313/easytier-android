@@ -46,11 +46,12 @@ rustup target add --toolchain 1.95.0 aarch64-linux-android armv7-linux-androidea
 ./gradlew.bat :app:assembleRelease -Pabi=armeabi-v7a
 ```
 
-模拟器构建使用 x86_64。
+64 位 x86 设备与模拟器构建使用 `x86_64`。
 
 ```powershell
 ./build-native.ps1 -Architecture x86_64
 ./gradlew.bat :app:assembleDebug -Pabi=x86_64
+./gradlew.bat :app:assembleRelease -Pabi=x86_64
 ```
 
 构建脚本会为原生动态库设置 16 KB 页对齐，并重映射编译路径。生成的 JNI 动态库放在 `app/src/main/jniLibs`。
