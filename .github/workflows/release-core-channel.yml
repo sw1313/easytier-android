@@ -116,6 +116,12 @@ jobs:
           for pid in .ci-peer/*.pid; do
             if test -f "$pid"; then kill "$(cat "$pid")" || true; fi
           done
+      - name: Report peer diagnostics
+        if: failure()
+        run: |
+          for log in .ci-peer/peer.log .ci-peer/manual.log .ci-peer/http.log; do
+            if test -f "$log"; then tail -80 "$log"; fi
+          done
 
   publish:
     needs: [check, build, test]

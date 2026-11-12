@@ -86,8 +86,8 @@ class ProbeInstrumentation : Instrumentation() {
                     ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
                 check(appUsesVpn == socketProtection) { "Unexpected app VPN routing" }
                 if (arguments.getString("exitEmulator") == "true") {
-                    val response = exchangeOverShell("toybox nc -w 5 -W 10 -q 1 198.18.0.1 21130", "GET /exit-probe.txt HTTP/1.0\r\n\r\n")
-                    check(response.endsWith("exit-proxy-ok\n")) { "Exit-node packet forwarding failed" }
+                    val response = exchangeOverShell("toybox nc -w 5 -W 10 -q 10 198.18.0.1 21130", "GET /exit-probe.txt HTTP/1.0\r\n\r\n")
+                    check(response.endsWith("exit-proxy-ok\n")) { "Exit-node packet forwarding failed, response=${response.take(250)}" }
                 }
                 val channel = CoreUpdates.channel(context)
                 val catalog = CoreUpdates.readRemote(CoreCatalog.url(channel))
