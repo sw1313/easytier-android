@@ -64,8 +64,8 @@ import androidx.compose.ui.unit.dp
         if (selected != NativeCore.loadedVersion) DataRow("等待应用", CoreCatalog.displayVersion(selected))
         if (state.release != null && !adapterOnly) DataRow("可用核心", state.release.coreVersion)
         val channelStatus = when {
+            channel == CoreChannel.NIGHTLY && state.release != null -> "已是最新可下载的 Nightly 兼容包"
             state.upstreamPending -> "官方 ${state.upstream} 已更新，Android 兼容包准备中。"
-            channel == CoreChannel.NIGHTLY && state.upstream.isNotBlank() -> "已是当前 Nightly 兼容构建"
             state.upstream == currentCore -> "已是最新官方稳定版"
             state.release == null && state.upstream.isBlank() -> "点击检查${channel.label}更新"
             state.upstream.isBlank() -> "已检查兼容更新源，官方版本查询暂不可用。"
@@ -76,7 +76,7 @@ import androidx.compose.ui.unit.dp
             UpdatePhase.CHECKING -> "正在检查${channel.label}和兼容更新源…"
             UpdatePhase.WAITING -> state.message
             UpdatePhase.CURRENT -> state.message.ifBlank { channelStatus }
-            UpdatePhase.AVAILABLE -> if (changingChannel) "${channel.label}兼容核心已就绪，下载后可应用并重连。" else if (adapterOnly) channelStatus else "发现核心更新 ${state.release?.coreVersion}"
+            UpdatePhase.AVAILABLE -> if (changingChannel) "${channel.label}兼容核心已就绪，下载后可应用并重连。" else if (adapterOnly) "Android 适配组件已就绪" else "发现核心更新 ${state.release?.coreVersion}"
             UpdatePhase.DOWNLOADING -> if (adapterOnly) "正在下载并校验适配组件…" else "正在下载并校验核心…"
             UpdatePhase.READY -> if (adapterOnly) "Android 适配组件已就绪，重新启动后生效" else "核心更新已就绪，重新启动后生效"
             UpdatePhase.ERROR -> state.message

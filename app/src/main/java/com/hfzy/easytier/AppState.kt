@@ -92,7 +92,9 @@ class ProfileStore(private val context: Context) {
             .sortedBy { it.name }.mapNotNull { file ->
                 runCatching {
                     val doc = JSONObject(file.readText())
-                    val raw = doc.getString("toml")
+                    val original = doc.getString("toml")
+                    val raw = prepareProfile(original)
+                    if (raw != original) save(doc.getString("title"), raw, doc.getString("id"), select = false)
                     Profile(doc.getString("id"), doc.getString("title"), raw, NativeCore.request("inspect", raw))
                 }.getOrNull()
             }
@@ -101,12 +103,13 @@ class ProfileStore(private val context: Context) {
             ?: AppState.profiles.value.firstOrNull()?.id.orEmpty()
     }
     fun save(title: String, raw: String, id: String = UUID.randomUUID().toString(), select: Boolean = true): Profile = synchronized(lock) {
-        val meta = NativeCore.request("inspect", raw)
-        val profile = Profile(id, title.ifBlank { meta.optString("network", "EasyTier") }, raw, meta)
+        val prepared = prepareProfile(raw)
+        val meta = NativeCore.request("inspect", prepared)
+        val profile = Profile(id, title.ifBlank { meta.optString("network", "EasyTier") }, prepared, meta)
         val atomic = AtomicFile(File(directory, "$id.json"))
         val output = atomic.startWrite()
         try {
-            output.write(JSONObject().put("id", id).put("title", profile.title).put("toml", raw).toString().toByteArray())
+            output.write(JSONObject().put("id", id).put("title", profile.title).put("toml", prepared).toString().toByteArray())
             atomic.finishWrite(output)
         } catch (error: Exception) {
             atomic.failWrite(output)
@@ -129,6 +132,17 @@ class ProfileStore(private val context: Context) {
         prefs.edit().putString("selected", next).apply()
         AppState.selected.value = next
     }
+}
+
+private fun prepareProfile(raw: String): String {
+    if (!NativeCore.request("version").optBoolean("portal_clients")) return raw
+    val document = NativeCore.request("decode", raw)
+    val portal = document.optJSONObject("vpn_portal_config") ?: return raw
+    if (portal.optString("wireguard_private_key").isBlank()) {
+        val key = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+        portal.put("wireguard_private_key", android.util.Base64.encodeToString(key, android.util.Base64.NO_WRAP))
+    }
+    return NativeCore.request("encode", document.toString()).getString("toml")
 }
 
 fun JSONArray.objects(): List<JSONObject> = (0 until length()).mapNotNull { optJSONObject(it) }

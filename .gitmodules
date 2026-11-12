@@ -1,3 +1,6 @@
 [submodule "core"]
 	path = core
 	url = https://github.com/EasyTier/EasyTier.git
+[submodule "nightly/core"]
+	path = nightly/core
+	url = https://github.com/EasyTier/EasyTier.git

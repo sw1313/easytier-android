@@ -89,6 +89,7 @@ private fun filterFields(fields: List<FieldSpec>, query: String): List<FieldSpec
 }
 
 @Composable private fun FieldControl(parent: JSONObject, spec: FieldSpec, path: String, onChange: () -> Unit) {
+    val namedPortal = remember { NativeCore.request("version").optBoolean("portal_clients") }
     when (spec.kind) {
         "object", "optional" -> {
             val existing = parent.optJSONObject(spec.key)
@@ -98,7 +99,11 @@ private fun filterFields(fields: List<FieldSpec>, query: String): List<FieldSpec
                 Switch(existing != null, { enabled ->
                     if (enabled) {
                         val value = JSONObject()
-                        if (spec.key == "vpn_portal_config") value.put("client_cidr", "10.20.0.0/24").put("wireguard_listen", "0.0.0.0:22022")
+                        if (spec.key == "vpn_portal_config") {
+                            value.put("wireguard_listen", "0.0.0.0:22022")
+                            if (namedPortal) value.put("clients", JSONArray().put(JSONObject().put("name", "client-1").put("virtual_ip", "10.20.0.1/24")))
+                            else value.put("client_cidr", "10.20.0.0/24")
+                        }
                         parent.put(spec.key, value)
                     } else parent.remove(spec.key)
                     expanded = enabled
@@ -106,7 +111,17 @@ private fun filterFields(fields: List<FieldSpec>, query: String): List<FieldSpec
                 })
             }
             if (spec.kind == "object" || (existing != null && expanded)) {
-                spec.children.forEach { child ->
+                val children = if (spec.key == "vpn_portal_config" && namedPortal && existing?.has("client_cidr") != true) listOf(
+                    FieldSpec("wireguard_listen", "监听地址", hint = "0.0.0.0:22022"),
+                    FieldSpec("wireguard_private_key", "服务器私钥", "secret", hint = "留空时在保存配置时生成并保存"),
+                    FieldSpec("clients", "门户客户端", "objects", children = listOf(
+                        FieldSpec("name", "客户端名称", hint = "client-1"),
+                        FieldSpec("virtual_ip", "虚拟地址", hint = "10.20.0.1/24"),
+                        FieldSpec("groups", "ACL 组", "list"),
+                    )),
+                ) else if (spec.key == "vpn_portal_config" && namedPortal) spec.children + FieldSpec("wireguard_private_key", "服务器私钥", "secret", hint = "留空时在保存配置时生成并保存")
+                else spec.children
+                children.forEach { child ->
                     // Do not insert empty optional tables just by opening the editor.
                     val nested = existing ?: JSONObject()
                     FieldControl(nested, child, "$path.${child.key}") { parent.put(spec.key, nested); onChange() }
@@ -138,6 +153,7 @@ private fun filterFields(fields: List<FieldSpec>, query: String): List<FieldSpec
                 when (spec.key) {
                     "peer" -> entry.put("uri", "udp://")
                     "port_forward" -> entry.put("proto", "tcp")
+                    "clients" -> entry.put("name", "client-${entries.length() + 1}").put("virtual_ip", "10.20.0.${entries.length() + 1}/24")
                     "chains" -> entry.put("name", "新规则链").put("enabled", true).put("chain_type", 1).put("default_action", 1).put("rules", JSONArray())
                     "rules" -> entry.put("name", "新规则").put("enabled", true).put("action", 1).put("protocol", 5).put("priority", 0).put("stateful", true)
                 }

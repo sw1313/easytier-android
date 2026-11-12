@@ -9,6 +9,7 @@ param(
     [Parameter(Mandatory)][string]$SigningDirectory,
     [ValidateSet('stable', 'nightly')][string]$Channel = 'stable',
     [string]$UpstreamCommit = '',
+    [string]$PreviousCatalog = '',
     [switch]$Empty
 )
 $ErrorActionPreference = 'Stop'
@@ -33,7 +34,7 @@ if (!$Empty) {
         version = $Version
         coreVersion = $CoreVersion
         api = 1
-        minAppVersionCode = if ($Channel -eq 'nightly') { 9 } else { 3 }
+        minAppVersionCode = if ($Channel -eq 'nightly') { 10 } else { 3 }
         minSdk = 26
         publishedAt = [DateTime]::UtcNow.ToString('o')
         notes = [IO.File]::ReadAllText((Resolve-Path $NotesFile))
@@ -42,6 +43,21 @@ if (!$Empty) {
         assets = $assets
     }
     $releases = @($release)
+    if (!$PreviousCatalog) { $PreviousCatalog = Join-Path $PSScriptRoot "updates/$Channel.json" }
+    if (Test-Path -LiteralPath $PreviousCatalog) {
+        $previous = Get-Content -LiteralPath $PreviousCatalog -Raw | ConvertFrom-Json
+        $previousBytes = [Convert]::FromBase64String($previous.payload)
+        $verifier = [Security.Cryptography.RSA]::Create()
+        try {
+            $verifier.ImportFromPem([IO.File]::ReadAllText((Join-Path $SigningDirectory 'core-signing-public.pem')))
+            if (!$verifier.VerifyData($previousBytes, [Convert]::FromBase64String($previous.signature), [Security.Cryptography.HashAlgorithmName]::SHA256, [Security.Cryptography.RSASignaturePadding]::Pkcs1)) {
+                throw 'Previous catalog signature is invalid'
+            }
+        } finally { $verifier.Dispose() }
+        $history = [Text.Encoding]::UTF8.GetString($previousBytes) | ConvertFrom-Json
+        if ($history.schema -ne 1 -or $history.channel -ne $Channel) { throw 'Previous catalog channel or schema does not match' }
+        $releases += @($history.releases | Where-Object version -NE $Version)
+    }
 }
 $payload = [ordered]@{
     schema = 1
@@ -49,6 +65,7 @@ $payload = [ordered]@{
     releases = $releases
 } | ConvertTo-Json -Depth 10 -Compress
 $bytes = [Text.Encoding]::UTF8.GetBytes($payload)
+if ($bytes.Length -gt 256 * 1024) { throw 'Catalog exceeds the application size limit' }
 $rsa = [Security.Cryptography.RSA]::Create()
 try {
     $rsa.ImportFromPem([IO.File]::ReadAllText((Join-Path $SigningDirectory 'core-signing-private.pem')))

@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["native"]
-exclude = ["core"]
+exclude = ["core", "nightly"]
 
 [workspace.package]
 edition = "2024"

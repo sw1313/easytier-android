@@ -117,7 +117,7 @@ object CoreUpdates {
             it.name.matches(Regex("core-[0-9a-f-]{36}\\.so")) && it.name !in retained
         }.forEach { it.delete() }
     }
-    private fun openHttps(address: String): HttpURLConnection {
+    private fun openHttps(address: String, probe: Boolean = false): HttpURLConnection {
         var url = URL(address)
         repeat(6) {
             require(url.protocol == "https") { "请使用 HTTPS 更新地址" }
@@ -126,6 +126,7 @@ object CoreUpdates {
             connection.readTimeout = 45_000
             connection.instanceFollowRedirects = false
             connection.useCaches = false
+            if (probe) connection.setRequestProperty("Range", "bytes=0-0")
             connection.setRequestProperty("Cache-Control", "no-cache")
             connection.setRequestProperty("User-Agent", "EasyTier-MD/${BuildConfig.VERSION_NAME}")
             try {
@@ -134,7 +135,7 @@ object CoreUpdates {
                     url = URL(url, connection.getHeaderField("Location") ?: error("更新地址跳转失败"))
                     connection.disconnect()
                 } else {
-                    check(code == 200) { "更新服务器返回 HTTP $code" }
+                    check(code == 200 || (probe && code == 206)) { "更新服务器返回 HTTP $code" }
                     return connection
                 }
             } catch (error: Exception) {
@@ -144,6 +145,11 @@ object CoreUpdates {
         }
         error("更新地址跳转次数过多")
     }
+    fun isDownloadAvailable(address: String): Boolean = runCatching {
+        val connection = openHttps(address, probe = true)
+        try { connection.inputStream.use { it.read() >= 0 } }
+        finally { connection.disconnect() }
+    }.getOrDefault(false)
     fun readRemote(address: String, limit: Int = 512 * 1024): ByteArray {
         val connection = openHttps(address)
         try { return connection.inputStream.use { it.readBytesLimited(limit) } }

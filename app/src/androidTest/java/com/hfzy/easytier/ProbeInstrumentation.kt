@@ -21,6 +21,78 @@ class ProbeInstrumentation : Instrumentation() {
         try {
             val context = targetContext
             NativeCore.load(context)
+            if (arguments.getString("stageCore") != null) {
+                val version = CoreUpdates.install(context, java.io.File(arguments.getString("stageCore")!!))
+                check(CoreUpdates.activeLibrary(context) != null)
+                results.putString("result", "PASS staged signed core $version")
+                finish(Activity.RESULT_OK, results)
+                return
+            }
+            if (arguments.getString("nightlyLoaded") == "true") {
+                check(CoreCatalog.channelOfVersion(NativeCore.loadedVersion) == CoreChannel.NIGHTLY)
+                val version = NativeCore.request("version")
+                check(version.getInt("adapter_build") == 4)
+                check(version.getString("upstream_commit") == "2abb1676b475947e46c527b57acc5f296cb48482")
+                check(version.optBoolean("portal_clients"))
+                val raw = defaultConfig + "\n[vpn_portal_config]\nclient_cidr = \"10.20.0.0/24\"\nwireguard_listen = \"127.0.0.1:22022\""
+                val stored = ProfileStore(context).save("旧门户兼容验证", raw, "legacy-portal-test")
+                val portal = NativeCore.request("decode", stored.raw).getJSONObject("vpn_portal_config")
+                check(portal.getString("client_cidr") == "10.20.0.0/24")
+                val key = portal.getString("wireguard_private_key")
+                check(android.util.Base64.decode(key, android.util.Base64.DEFAULT).size == 32)
+                ProfileStore(context).load()
+                val reloaded = AppState.profiles.value.first { it.id == stored.id }
+                check(NativeCore.request("decode", reloaded.raw).getJSONObject("vpn_portal_config").getString("wireguard_private_key") == key)
+                NativeCore.request("inspect", reloaded.raw)
+                results.putString("result", "PASS real Nightly JNI loaded / pinned upstream commit / legacy portal migration / API 1")
+                finish(Activity.RESULT_OK, results)
+                return
+            }
+            if (arguments.getString("vpnTraffic") == "true") {
+                check(android.net.VpnService.prepare(context) == null)
+                val raw = """
+                    instance_name = "Nightly emulator traffic"
+                    hostname = "android-traffic-test"
+                    ipv4 = "10.211.50.2/24"
+                    dhcp = false
+                    listeners = []
+                    [network_identity]
+                    network_name = "material-local-test"
+                    network_secret = "local-emulator-test-only"
+                    [[peer]]
+                    uri = "tcp://10.0.2.2:21110"
+                    [flags]
+                    enable_ipv6 = false
+                    disable_upnp = true
+                    [vpn_portal_config]
+                    wireguard_listen = "127.0.0.1:22022"
+                    [[vpn_portal_config.clients]]
+                    name = "test-client"
+                    virtual_ip = "10.20.0.1/24"
+                """.trimIndent()
+                val profile = ProfileStore(context).save("Nightly 流量验证", raw, "nightly-traffic")
+                val savedKey = NativeCore.request("decode", profile.raw).getJSONObject("vpn_portal_config").getString("wireguard_private_key")
+                ProfileStore(context).load()
+                check(NativeCore.request("decode", AppState.profiles.value.first { it.id == profile.id }.raw).getJSONObject("vpn_portal_config").getString("wireguard_private_key") == savedKey)
+                try {
+                    runOnMainSync { EasyTierVpnService.connect(context, profile.id) }
+                    val deadline = android.os.SystemClock.elapsedRealtime() + 30_000
+                    while (AppState.vpn.value.phase != "connected" && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(200)
+                    check(AppState.vpn.value.phase == "connected") { "VPN failed: ${AppState.vpn.value.error}" }
+                    Thread.sleep(1500)
+                    val response = shell("echo nightly-vpn-test | toybox nc -w 5 198.18.0.1 21130")
+                    check(response.contains("nightly-vpn-test")) { "VPN TCP payload did not return" }
+                    val snapshot = NativeCore.request("snapshot")
+                    check(snapshot.optLong("rx") > 0 && snapshot.optLong("tx") > 0)
+                    check(snapshot.array("portal_clients").objects().any { usablePortalConfig(it.text("config")) }) { "Portal did not generate a named client config" }
+                    results.putString("result", "PASS Android TUN / peer connection / subnet proxy TCP payload / counters / named WireGuard portal")
+                } finally {
+                    runOnMainSync { EasyTierVpnService.disconnect(context) }
+                    repeat(50) { if (AppState.vpn.value.active) Thread.sleep(100) }
+                }
+                finish(Activity.RESULT_OK, results)
+                return
+            }
             if (arguments.getString("channels") == "true") {
                 val prefs = context.getSharedPreferences("core", android.content.Context.MODE_PRIVATE)
                 val keys = listOf("updateChannel", "version", "lastChecked", "lastChecked:nightly")
@@ -57,6 +129,15 @@ class ProbeInstrumentation : Instrumentation() {
                     check(CoreCatalog.evaluate(context, CoreChannel.STABLE, stable, stable.coreVersion).phase == UpdatePhase.AVAILABLE)
                     check(!CoreCatalog.evaluate(context, CoreChannel.NIGHTLY, nightly, "nightly", "a".repeat(40)).upstreamPending)
                     check(CoreCatalog.evaluate(context, CoreChannel.NIGHTLY, nightly, "nightly", "b".repeat(40)).upstreamPending)
+                    check(CoreCatalog.evaluate(context, CoreChannel.NIGHTLY, nightly, "nightly", "b".repeat(40)).phase == UpdatePhase.READY)
+                    val older = nightly.copy(version = "2.7.0-nightly.20261110.bbbbbbb-md4", publishedAt = "2026-11-10T00:00:00Z")
+                    val newer = nightly.copy(publishedAt = "2026-11-11T00:00:00Z")
+                    check(CoreCatalog.newestAvailable(listOf(older, newer), CoreChannel.NIGHTLY) { true } == newer)
+                    check(CoreCatalog.newestAvailable(listOf(older, newer), CoreChannel.NIGHTLY) { it != newer } == older)
+                    check(CoreCatalog.newestAvailable(listOf(older, newer), CoreChannel.NIGHTLY) { false } == null)
+                    prefs.edit().putString("version", CoreUpdates.BUNDLED_VERSION).commit()
+                    check(CoreCatalog.evaluate(context, CoreChannel.NIGHTLY, older, "nightly", "c".repeat(40)).phase == UpdatePhase.AVAILABLE)
+                    prefs.edit().putString("version", nightlyVersion).commit()
                     check(CoreCatalog.evaluate(context, CoreChannel.NIGHTLY, null, "nightly").phase == UpdatePhase.WAITING)
                     val archive = CoreUpdates.download(context, stable.url)
                     try {
@@ -219,6 +300,12 @@ class ProbeInstrumentation : Instrumentation() {
                 check(NativeCore.loadedVersion == "2.6.4-md3")
                 check(NativeCore.request("version").getInt("adapter_build") == 3)
                 check(CoreCatalog.check(context).phase == UpdatePhase.CURRENT)
+                if (arguments.getString("legacyPortal") == "true") {
+                    ProfileStore(context).load()
+                    val portal = AppState.profiles.value.first { it.id == "legacy-portal-test" }
+                    NativeCore.request("inspect", portal.raw)
+                    check(NativeCore.request("decode", portal.raw).getJSONObject("vpn_portal_config").getString("client_cidr") == "10.20.0.0/24")
+                }
                 results.putString("result", "PASS updated JNI loaded / current-version check")
                 finish(Activity.RESULT_OK, results)
                 return

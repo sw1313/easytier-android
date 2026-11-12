@@ -105,12 +105,14 @@ object CoreCatalog {
         }
     }
 
-    private fun latest(releases: List<CoreRelease>, channel: CoreChannel): CoreRelease? =
-        if (channel == CoreChannel.NIGHTLY) releases.maxByOrNull { java.time.Instant.parse(it.publishedAt) }
-        else releases.maxWithOrNull { a, b -> compareVersions(a.version, b.version) }
+    fun newestAvailable(releases: List<CoreRelease>, channel: CoreChannel, available: (CoreRelease) -> Boolean): CoreRelease? {
+        val ordered = if (channel == CoreChannel.NIGHTLY) releases.sortedByDescending { java.time.Instant.parse(it.publishedAt) }
+        else releases.sortedWith { a, b -> compareVersions(b.version, a.version) }
+        return ordered.firstOrNull(available)
+    }
 
     fun parse(context: Context, envelopeBytes: ByteArray, channel: CoreChannel = CoreChannel.STABLE): CoreRelease =
-        latest(releases(context, envelopeBytes, channel), channel)
+        newestAvailable(releases(context, envelopeBytes, channel), channel) { true }
             ?: error("更新源暂无适用于此应用与手机架构的核心")
 
     fun evaluate(context: Context, channel: CoreChannel, release: CoreRelease?, upstream: String, upstreamCommit: String = ""): CoreUpdateState {
@@ -140,7 +142,9 @@ object CoreCatalog {
     }
 
     fun check(context: Context, channel: CoreChannel = CoreUpdates.channel(context)): CoreUpdateState {
-        val release = latest(releases(context, CoreUpdates.readRemote("${url(channel)}?check=${System.currentTimeMillis()}"), channel), channel)
+        val candidates = releases(context, CoreUpdates.readRemote("${url(channel)}?check=${System.currentTimeMillis()}"), channel)
+        val release = newestAvailable(candidates, channel) { CoreUpdates.isDownloadAvailable(it.url) }
+        check(candidates.isEmpty() || release != null) { "兼容核心包暂时无法下载，请稍后重试。" }
         val upstream = runCatching {
             val suffix = if (channel == CoreChannel.STABLE) "latest" else "tags/nightly"
             val info = JSONObject(String(CoreUpdates.readRemote(UPSTREAM + suffix), Charsets.UTF_8))

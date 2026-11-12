@@ -202,7 +202,13 @@ private val LightColors = lightColorScheme(
                 DataRow("中转节点", nodes.count { !it.optBoolean("direct") }.toString())
                 DataRow("子网路由", vpn.snapshot.array("routes").strings().distinct().joinToString("\n").ifBlank { "—" })
                 TextButton(onClick = { onDetails("本机节点详情", vpn.snapshot.optJSONObject("details")?.optJSONObject("my_node_info")?.toString(2) ?: "连接后显示") }) { Text("查看本机详情"); Icon(Icons.Outlined.ChevronRight, null) }
-                if (portalReady) {
+                val portalClients = vpn.snapshot.array("portal_clients").objects().filter { usablePortalConfig(it.text("config")) }
+                if (portalClients.isNotEmpty()) {
+                    portalClients.forEach { client ->
+                        TextButton(onClick = { onDetails("WireGuard · ${client.text("name")}", client.text("config")) }) { Text("门户客户端 ${client.text("name")}"); Icon(Icons.Outlined.ChevronRight, null) }
+                    }
+                    if (profile != null) TextButton(onClick = { onPortalSettings(profile) }) { Text("配置 WireGuard 门户"); Icon(Icons.Outlined.ChevronRight, null) }
+                } else if (portalReady) {
                     TextButton(onClick = { onDetails("WireGuard 门户配置", portalConfig) }) { Text("查看 WireGuard 门户配置"); Icon(Icons.Outlined.ChevronRight, null) }
                 } else {
                     Text(if (document?.has("vpn_portal_config") == true) "WireGuard 门户尚未启动，保存配置后请重连并检查监听端口。" else "WireGuard 门户未启用", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

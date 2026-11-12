@@ -25,6 +25,8 @@ git submodule update --init --recursive
 
 `core` 固定在官方 EasyTier v2.6.4。Rust JNI 代码位于 `native`，Android 应用位于 `app`。
 
+Nightly 使用独立的 `nightly/core` 官方子模块，固定在 `2abb1676b475947e46c527b57acc5f296cb48482`。对应的 API 1 JNI 适配位于 `nightly/native`，有独立的 Cargo 锁文件。
+
 ## 编译
 
 将本机 SDK 地址写入未纳入版本管理的 `local.properties`，或设置 `ANDROID_HOME`。
@@ -55,6 +57,14 @@ rustup target add --toolchain 1.95.0 aarch64-linux-android armv7-linux-androidea
 ```
 
 构建脚本会为原生动态库设置 16 KB 页对齐，并重映射编译路径。生成的 JNI 动态库放在 `app/src/main/jniLibs`。
+
+Nightly 构建通过 `-Channel nightly` 选择，产物放在 `dist/nightly-libs/<ABI>`。
+
+```powershell
+./build-native.ps1 -Channel nightly -Architecture aarch64
+./build-native.ps1 -Channel nightly -Architecture armv7
+./build-native.ps1 -Channel nightly -Architecture x86_64
+```
 
 ## 发布 APK
 

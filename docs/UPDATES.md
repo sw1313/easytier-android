@@ -19,9 +19,9 @@
 - 所选通道决定后续检查的更新源。兼容包下载、校验完成后，可通过“应用并重连”加载。
 - 返回稳定版时可以下载稳定核心，即使其版本号低于当前 Nightly。
 
-Nightly 兼容包需要针对对应的官方提交完成 JNI 适配。当前官方 Nightly 已重构核心管理接口，兼容包准备期间，应用显示官方构建及准备状态。[官方 Nightly](https://github.com/EasyTier/EasyTier/releases/tag/nightly)
+Nightly 从签名目录选择最新可下载的兼容包。筛选条件包括 JNI API、应用最低版本、Android 版本与当前应用进程架构。最新候选包无法下载时，继续尝试目录中的历史兼容包。只有目录中没有兼容候选时显示准备状态，有候选但暂时均无法访问时显示重试提示。官方滚动提交独立展示，更新的官方提交不会阻止已有兼容包安装。[官方 Nightly](https://github.com/EasyTier/EasyTier/releases/tag/nightly)
 
-<img src="screenshots/nightly.png" alt="模拟器中的 Nightly 更新通道和兼容包准备状态" width="320" />
+<img src="screenshots/nightly.png" alt="模拟器中的 Nightly 更新通道" width="320" />
 
 ## APK 与核心更新
 
@@ -72,6 +72,13 @@ JNI 接口兼容、现有应用功能满足需求时，可以独立更新核心�
 
 升级官方核心源码后需要编译、验证对应的 Android JNI 包。应用使用 JNI API 1，目录会按 API、应用版本和手机架构选择兼容包。
 
-Nightly 发布使用 `-Channel nightly`。包版本使用 `2.7.0-nightly.20261111.2abb167-md3` 形式，目录通过 `-UpstreamCommit` 记录完整的官方提交 SHA。完成对应提交的 JNI 适配与三个架构编译后，依次生成签名包及目录，发布到相应的 `core-v<版本>` Release。
+Nightly 发布使用 `-Channel nightly`。包版本使用 `2.7.0-nightly.20261111.2abb167-md4` 形式，目录通过 `-UpstreamCommit` 记录完整的官方提交 SHA。完成对应提交的 JNI 适配与三个架构编译后，依次生成签名包及目录，发布到相应的 `core-v<版本>` Release。
+
+```powershell
+./build-native.ps1 -Channel nightly -Architecture aarch64
+./package-core.ps1 -Channel nightly -Abi arm64-v8a -Version 2.7.0-nightly.20261111.2abb167-md4 -SigningDirectory C:/Signing/EasyTier
+```
+
+Nightly 包默认从 `dist/nightly-libs` 读取动态库，也可用 `-LibraryDirectory` 指定明确的构建产物目录。发布目录默认验证并保留 `updates/<通道>.json` 中的历史条目，可用 `-PreviousCatalog` 指定来源。
 
 签名包的 `channel` 字段需要与目录、版本标识一致。空目录可以用 `./publish-catalog.ps1 -Channel nightly -Empty -SigningDirectory C:/Signing/EasyTier` 生成，应用会显示兼容包准备状态。
