@@ -35,16 +35,34 @@ class ProbeInstrumentation : Instrumentation() {
             if (arguments.getString("exitUpdate") == "true") {
                 check(NativeCore.request("version").optBoolean("socket_protection"))
                 ProfileStore(context).load()
-                val savedId = context.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
-                    .getString("active", AppState.selected.value)
-                val profile = AppState.profiles.value.first { it.id == savedId }
+                val profile = if (arguments.getString("exitEmulator") == "true") {
+                    CoreUpdates.setChannel(context, CoreChannel.CUSTOM)
+                    ProfileStore(context).save("Emulator exit test", """
+                        ipv4 = "10.211.50.2/24"
+                        dhcp = false
+                        listeners = []
+                        exit_nodes = ["10.211.50.1"]
+                        [network_identity]
+                        network_name = "emulator-exit-test"
+                        network_secret = "local-test-only"
+                        [[peer]]
+                        uri = "tcp://10.0.2.2:21150"
+                        [flags]
+                        enable_ipv6 = false
+                        disable_upnp = true
+                    """.trimIndent(), "emulator-exit-test")
+                } else {
+                    val savedId = context.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
+                        .getString("active", AppState.selected.value)
+                    AppState.profiles.value.first { it.id == savedId }
+                }
                 check(profile.meta.optInt("exitNodes") > 0) { "Select an exit node before running this probe" }
                 check(android.net.VpnService.prepare(context) == null)
                 runOnMainSync { EasyTierVpnService.connect(context, profile.id) }
                 val deadline = android.os.SystemClock.elapsedRealtime() + 45_000
                 while (AppState.vpn.value.phase != "connected" && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(200)
                 check(AppState.vpn.value.phase == "connected") { "VPN connection failed" }
-                Thread.sleep(1500)
+                Thread.sleep(5000)
                 val connectivity = context.getSystemService(android.net.ConnectivityManager::class.java)
                 check(connectivity.getNetworkCapabilities(connectivity.activeNetwork)
                     ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true) { "App traffic still bypasses VPN" }
