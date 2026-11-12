@@ -26,6 +26,8 @@ class MainActivity : ComponentActivity() {
     var busy by mutableStateOf(false)
     var page by mutableIntStateOf(0)
     var coreUpdate by mutableStateOf(CoreUpdateState())
+    var coreUpdateChannel by mutableStateOf(CoreChannel.STABLE)
+        private set
     private var pendingProfile = ""
     private var exportText = ""
     private val vpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -59,6 +61,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        coreUpdateChannel = CoreUpdates.channel(this)
         runCatching { ProfileStore(this).load() }.onFailure { notice = it.message ?: "加载失败" }
         intent.getStringExtra("expectedCore")?.let { expected ->
             val applied = NativeCore.loadedVersion == expected
@@ -111,16 +114,24 @@ class MainActivity : ComponentActivity() {
     }
     fun checkCoreUpdate() {
         if (busy) return
+        val channel = coreUpdateChannel
         coreUpdate = coreUpdate.copy(phase = UpdatePhase.CHECKING, message = "")
         work {
             try {
-                val state = CoreCatalog.check(this@MainActivity)
+                val state = CoreCatalog.check(this@MainActivity, channel)
                 withContext(Dispatchers.Main) { coreUpdate = state }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 withContext(Dispatchers.Main) { coreUpdate = coreUpdate.copy(phase = UpdatePhase.ERROR, message = error.message ?: "检查更新失败") }
             }
         }
+    }
+    fun selectCoreChannel(channel: CoreChannel) {
+        if (busy || channel == coreUpdateChannel) return
+        CoreUpdates.setChannel(this, channel)
+        coreUpdateChannel = channel
+        coreUpdate = CoreUpdateState()
+        checkCoreUpdate()
     }
     fun downloadCoreUpdate() {
         if (busy) return
@@ -133,7 +144,7 @@ class MainActivity : ComponentActivity() {
                 }
                 try {
                     check(file.length() == release.size && CoreUpdates.fileDigest(file).equals(release.sha256, true)) { "下载包校验失败，请重新下载" }
-                    CoreUpdates.install(this@MainActivity, file, release.version)
+                    CoreUpdates.install(this@MainActivity, file, release.version, release.channel)
                 } finally { file.delete() }
                 withContext(Dispatchers.Main) { coreRevision++; coreUpdate = coreUpdate.copy(phase = UpdatePhase.READY) }
             } catch (error: Exception) {

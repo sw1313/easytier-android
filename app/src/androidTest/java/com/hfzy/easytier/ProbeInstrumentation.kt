@@ -21,6 +21,63 @@ class ProbeInstrumentation : Instrumentation() {
         try {
             val context = targetContext
             NativeCore.load(context)
+            if (arguments.getString("channels") == "true") {
+                val prefs = context.getSharedPreferences("core", android.content.Context.MODE_PRIVATE)
+                val keys = listOf("updateChannel", "version", "lastChecked", "lastChecked:nightly")
+                val backup = keys.associateWith { prefs.all[it] }
+                try {
+                    check(CoreCatalog.compareVersions("2.7.0-nightly.20261111.aaaaaaa-md3", "2.6.4-md3") > 0)
+                    check(CoreCatalog.compareVersions("2.7.0", "2.7.0-nightly.20261111.aaaaaaa-md3") > 0)
+                    check(CoreCatalog.compareVersions("2.7.0-nightly.10.aaaaaaa-md3", "2.7.0-nightly.9.aaaaaaa-md3") > 0)
+                    check(CoreCatalog.compareVersions("2.6.4-md3", "2.6.4-md2") > 0)
+                    check(CoreCatalog.channelOfVersion("2.6.4-md3") == CoreChannel.STABLE)
+                    val nightlyVersion = "2.7.0-nightly.20261111.aaaaaaa-md3"
+                    check(CoreCatalog.channelOfVersion(nightlyVersion) == CoreChannel.NIGHTLY)
+                    val stableBytes = CoreUpdates.readRemote(CoreCatalog.url(CoreChannel.STABLE) + "?test=" + System.currentTimeMillis())
+                    val nightlyBytes = CoreUpdates.readRemote(CoreCatalog.url(CoreChannel.NIGHTLY) + "?test=" + System.currentTimeMillis())
+                    val stable = CoreCatalog.parse(context, stableBytes)
+                    check(CoreCatalog.releases(context, nightlyBytes, CoreChannel.NIGHTLY).all { it.channel == CoreChannel.NIGHTLY })
+                    check(runCatching { CoreCatalog.releases(context, stableBytes, CoreChannel.NIGHTLY) }.isFailure)
+                    check(runCatching { CoreCatalog.releases(context, nightlyBytes, CoreChannel.STABLE) }.isFailure)
+                    val tampered = JSONObject(String(nightlyBytes, Charsets.UTF_8))
+                    val payload = android.util.Base64.decode(tampered.getString("payload"), android.util.Base64.DEFAULT)
+                    payload[payload.lastIndex] = (payload.last().toInt() xor 1).toByte()
+                    tampered.put("payload", android.util.Base64.encodeToString(payload, android.util.Base64.NO_WRAP))
+                    check(runCatching { CoreCatalog.releases(context, tampered.toString().toByteArray(), CoreChannel.NIGHTLY) }.isFailure)
+                    val stableChecked = CoreUpdates.lastChecked(context, CoreChannel.STABLE)
+                    CoreUpdates.setChannel(context, CoreChannel.NIGHTLY)
+                    check(CoreUpdates.channel(context) == CoreChannel.NIGHTLY)
+                    CoreUpdates.markChecked(context, CoreChannel.NIGHTLY)
+                    check(CoreUpdates.lastChecked(context, CoreChannel.NIGHTLY) > 0)
+                    check(CoreUpdates.lastChecked(context, CoreChannel.STABLE) == stableChecked)
+                    val nightly = stable.copy(version = nightlyVersion, coreVersion = "2.7.0-20261111", channel = CoreChannel.NIGHTLY, upstreamCommit = "a".repeat(40))
+                    prefs.edit().putString("version", CoreUpdates.BUNDLED_VERSION).commit()
+                    check(CoreCatalog.evaluate(context, CoreChannel.NIGHTLY, nightly, "nightly", "a".repeat(40)).phase == UpdatePhase.AVAILABLE)
+                    prefs.edit().putString("version", nightlyVersion).commit()
+                    check(CoreCatalog.evaluate(context, CoreChannel.STABLE, stable, stable.coreVersion).phase == UpdatePhase.AVAILABLE)
+                    check(!CoreCatalog.evaluate(context, CoreChannel.NIGHTLY, nightly, "nightly", "a".repeat(40)).upstreamPending)
+                    check(CoreCatalog.evaluate(context, CoreChannel.NIGHTLY, nightly, "nightly", "b".repeat(40)).upstreamPending)
+                    check(CoreCatalog.evaluate(context, CoreChannel.NIGHTLY, null, "nightly").phase == UpdatePhase.WAITING)
+                    val archive = CoreUpdates.download(context, stable.url)
+                    try {
+                        check(runCatching { CoreUpdates.install(context, archive, stable.version, CoreChannel.NIGHTLY) }.isFailure)
+                        check(CoreUpdates.version(context) == nightlyVersion)
+                    } finally { archive.delete() }
+                } finally {
+                    val edit = prefs.edit()
+                    backup.forEach { (key, value) ->
+                        when (value) {
+                            is String -> edit.putString(key, value)
+                            is Long -> edit.putLong(key, value)
+                            else -> edit.remove(key)
+                        }
+                    }
+                    check(edit.commit())
+                }
+                results.putString("result", "PASS channel persistence / scoped timestamps / signed catalogs / cross-channel rejection / Nightly version ordering / stable downgrade / waiting state")
+                finish(Activity.RESULT_OK, results)
+                return
+            }
             if (arguments.getString("vpnLifecycle") == "true") {
                 check(android.net.VpnService.prepare(context) == null) { "Grant VPN permission before this test" }
                 val connectivity = context.getSystemService(android.net.ConnectivityManager::class.java)

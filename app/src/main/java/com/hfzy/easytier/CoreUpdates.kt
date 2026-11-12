@@ -22,9 +22,18 @@ object CoreUpdates {
             .firstOrNull() ?: error("无法识别当前应用的核心架构")
     private const val LIMIT = 120 * 1024 * 1024
     private fun prefs(context: Context) = context.getSharedPreferences("core", Context.MODE_PRIVATE)
+    fun channel(context: Context): CoreChannel = CoreChannel.entries.firstOrNull {
+        it.id == prefs(context).getString("updateChannel", CoreChannel.STABLE.id)
+    } ?: CoreChannel.STABLE
+    fun setChannel(context: Context, channel: CoreChannel) {
+        prefs(context).edit().putString("updateChannel", channel.id).apply()
+    }
     fun version(context: Context): String = prefs(context).getString("version", BUNDLED_VERSION).orEmpty()
-    fun lastChecked(context: Context): Long = prefs(context).getLong("lastChecked", 0)
-    fun markChecked(context: Context) { prefs(context).edit().putLong("lastChecked", System.currentTimeMillis()).apply() }
+    private fun checkedKey(channel: CoreChannel) = if (channel == CoreChannel.STABLE) "lastChecked" else "lastChecked:${channel.id}"
+    fun lastChecked(context: Context, channel: CoreChannel = CoreUpdates.channel(context)): Long = prefs(context).getLong(checkedKey(channel), 0)
+    fun markChecked(context: Context, channel: CoreChannel = CoreUpdates.channel(context)) {
+        prefs(context).edit().putLong(checkedKey(channel), System.currentTimeMillis()).apply()
+    }
     fun activeLibrary(context: Context): File? {
         val name = prefs(context).getString("library", null) ?: return null
         val library = File(File(context.filesDir, "cores"), name)
@@ -33,7 +42,7 @@ object CoreUpdates {
     fun rollback(context: Context) {
         prefs(context).edit().remove("library").remove("version").remove("previousLibrary").remove("previousVersion").commit()
     }
-    @Synchronized fun install(context: Context, archive: File, expectedVersion: String? = null): String {
+    @Synchronized fun install(context: Context, archive: File, expectedVersion: String? = null, expectedChannel: CoreChannel? = null): String {
         val version: String
         ZipFile(archive).use { zip ->
             fun read(name: String, limit: Int): ByteArray {
@@ -50,6 +59,9 @@ object CoreUpdates {
             version = manifest.getString("version")
             require(version.isNotBlank() && version.length <= 80)
             require(expectedVersion == null || expectedVersion == version) { "更新包版本与更新目录不一致" }
+            val packageChannel = CoreCatalog.channelOfVersion(version)
+            require(manifest.optString("channel", packageChannel.id) == packageChannel.id) { "更新包通道与核心版本不一致" }
+            require(expectedChannel == null || packageChannel == expectedChannel) { "更新包与所选通道不一致" }
             val bytes = read("libeasytier_mobile.so", LIMIT)
             val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
             require(digest.equals(manifest.getString("sha256"), true)) { "核心文件校验失败" }

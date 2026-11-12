@@ -2,15 +2,18 @@ param(
     [ValidateSet('arm64-v8a', 'armeabi-v7a', 'x86_64')][string]$Abi = 'arm64-v8a',
     [string]$Version = '2.6.4-md3',
     [string]$OutputDirectory = (Join-Path $PSScriptRoot 'dist'),
-    [Parameter(Mandatory)][string]$SigningDirectory
+    [Parameter(Mandatory)][string]$SigningDirectory,
+    [ValidateSet('stable', 'nightly')][string]$Channel = 'stable'
 )
 $ErrorActionPreference = 'Stop'
+if (($Channel -eq 'nightly') -ne $Version.Contains('-nightly.')) { throw 'Core version and channel must agree' }
 $library = Join-Path $PSScriptRoot "app/src/main/jniLibs/$Abi/libeasytier_mobile.so"
 if (!(Test-Path -LiteralPath $library)) { throw 'Build the native core first' }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $manifest = [ordered]@{
     api = 1
     version = $Version
+    channel = $Channel
     abi = $Abi
     sha256 = (Get-FileHash -LiteralPath $library -Algorithm SHA256).Hash.ToLowerInvariant()
 } | ConvertTo-Json -Compress

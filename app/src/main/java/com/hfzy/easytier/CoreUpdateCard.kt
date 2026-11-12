@@ -11,10 +11,12 @@ import androidx.compose.ui.unit.dp
 
 @Composable fun CoreUpdateCard(activity: MainActivity) {
     val state = activity.coreUpdate
-    val selected = remember(activity.coreRevision, state.phase) { CoreUpdates.version(activity) }
+    val channel = activity.coreUpdateChannel
+    val selected = remember(activity.coreRevision, state.phase, channel) { CoreUpdates.version(activity) }
     val currentCore = CoreCatalog.coreVersion(NativeCore.loadedVersion)
-    val targetCore = if (state.phase == UpdatePhase.READY) CoreCatalog.coreVersion(selected) else state.release?.coreVersion
-    val adapterOnly = targetCore == currentCore
+    val targetVersion = if (state.phase == UpdatePhase.READY) selected else state.release?.version
+    val adapterOnly = targetVersion != null && CoreCatalog.coreVersion(targetVersion) == currentCore
+    val changingChannel = targetVersion != null && CoreCatalog.channelOfVersion(targetVersion) != CoreCatalog.channelOfVersion(NativeCore.loadedVersion)
     var menu by remember { mutableStateOf(false) }
     var customUrl by remember { mutableStateOf<String?>(null) }
     var restart by remember { mutableStateOf(false) }
@@ -46,23 +48,35 @@ import androidx.compose.ui.unit.dp
                 }
             }
         }
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            CoreChannel.entries.forEachIndexed { index, option ->
+                SegmentedButton(
+                    selected = channel == option,
+                    onClick = { activity.selectCoreChannel(option) },
+                    enabled = !activity.busy,
+                    shape = SegmentedButtonDefaults.itemShape(index, CoreChannel.entries.size),
+                ) { Text(option.label) }
+            }
+        }
         DataRow("当前核心", currentCore)
-        if (state.upstream.isNotBlank()) DataRow("官方稳定版", state.upstream)
+        if (state.upstream.isNotBlank()) DataRow(if (channel == CoreChannel.NIGHTLY) "官方 Nightly" else "官方稳定版", state.upstream)
         DataRow("Android 适配构建", CoreCatalog.adapterBuild(NativeCore.loadedVersion))
         if (selected != NativeCore.loadedVersion) DataRow("等待应用", CoreCatalog.displayVersion(selected))
         if (state.release != null && !adapterOnly) DataRow("可用核心", state.release.coreVersion)
-        val stableStatus = when {
-            state.upstreamPending -> "官方 ${state.upstream} 已发布，Android 兼容包准备中。"
+        val channelStatus = when {
+            state.upstreamPending -> "官方 ${state.upstream} 已更新，Android 兼容包准备中。"
+            channel == CoreChannel.NIGHTLY && state.upstream.isNotBlank() -> "已是当前 Nightly 兼容构建"
             state.upstream == currentCore -> "已是最新官方稳定版"
-            state.release == null && state.upstream.isBlank() -> "点击检查官方稳定版更新"
+            state.release == null && state.upstream.isBlank() -> "点击检查${channel.label}更新"
             state.upstream.isBlank() -> "已检查兼容更新源，官方版本查询暂不可用。"
             else -> "官方稳定版为 ${state.upstream}"
         }
         val message = when (state.phase) {
-            UpdatePhase.IDLE -> "启动时自动检查，也可手动检查稳定版更新。"
-            UpdatePhase.CHECKING -> "正在检查稳定版和兼容更新源…"
-            UpdatePhase.CURRENT -> state.message.ifBlank { stableStatus }
-            UpdatePhase.AVAILABLE -> if (adapterOnly) stableStatus else "发现核心更新 ${state.release?.coreVersion}"
+            UpdatePhase.IDLE -> "启动时自动检查，也可手动检查${channel.label}更新。"
+            UpdatePhase.CHECKING -> "正在检查${channel.label}和兼容更新源…"
+            UpdatePhase.WAITING -> state.message
+            UpdatePhase.CURRENT -> state.message.ifBlank { channelStatus }
+            UpdatePhase.AVAILABLE -> if (changingChannel) "${channel.label}兼容核心已就绪，下载后可应用并重连。" else if (adapterOnly) channelStatus else "发现核心更新 ${state.release?.coreVersion}"
             UpdatePhase.DOWNLOADING -> if (adapterOnly) "正在下载并校验适配组件…" else "正在下载并校验核心…"
             UpdatePhase.READY -> if (adapterOnly) "Android 适配组件已就绪，重新启动后生效" else "核心更新已就绪，重新启动后生效"
             UpdatePhase.ERROR -> state.message
@@ -78,11 +92,11 @@ import androidx.compose.ui.unit.dp
             if (notes) Text(release.notes.take(6000), style = MaterialTheme.typography.bodySmall)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (state.phase == UpdatePhase.AVAILABLE) Button(onClick = activity::downloadCoreUpdate, enabled = !activity.busy) { Text(if (adapterOnly) "更新适配组件" else "下载核心更新") }
+            if (state.phase == UpdatePhase.AVAILABLE) Button(onClick = activity::downloadCoreUpdate, enabled = !activity.busy) { Text(if (changingChannel) "切换至${channel.label}" else if (adapterOnly) "更新适配组件" else "下载核心更新") }
             if (state.phase == UpdatePhase.READY) Button(onClick = { restart = true }, enabled = !activity.busy) { Text(if (AppState.vpn.value.active) "应用并重连" else "应用并重启") }
             OutlinedButton(onClick = activity::checkCoreUpdate, enabled = !activity.busy) { Text(if (state.phase == UpdatePhase.CHECKING) "正在检查" else "检查更新") }
         }
-        val checked = CoreUpdates.lastChecked(activity)
+        val checked = CoreUpdates.lastChecked(activity, channel)
         if (checked > 0) Text("上次检查 ${java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(checked))}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

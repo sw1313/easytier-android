@@ -19,7 +19,7 @@ object NativeCore {
     @Synchronized fun load(context: Context) {
         if (loaded) return
         var installed = CoreUpdates.activeLibrary(context)
-        if (installed != null && runCatching {
+        if (installed != null && CoreCatalog.channelOfVersion(CoreUpdates.version(context)) == CoreChannel.STABLE && runCatching {
             CoreCatalog.compareVersions(CoreUpdates.version(context), CoreUpdates.BUNDLED_VERSION) < 0
         }.getOrDefault(true)) {
             CoreUpdates.rollback(context)
