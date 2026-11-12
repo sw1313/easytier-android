@@ -91,6 +91,8 @@ jobs:
           chmod +x "$peer"
           "$peer" -c .github/scripts/emulator-exit.toml > .ci-peer/peer.log 2>&1 &
           echo "$!" > .ci-peer/peer.pid
+          "$peer" -c .github/scripts/emulator-manual.toml > .ci-peer/manual.log 2>&1 &
+          echo "$!" > .ci-peer/manual.pid
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -109,7 +111,9 @@ jobs:
       - name: Stop test peer
         if: always()
         run: |
-          if test -f .ci-peer/peer.pid; then kill "$(cat .ci-peer/peer.pid)" || true; fi
+          for pid in .ci-peer/*.pid; do
+            if test -f "$pid"; then kill "$(cat "$pid")" || true; fi
+          done
 
   publish:
     needs: [check, build, test]

@@ -1,0 +1,12 @@
+ipv4 = "10.211.50.1/24"
+dhcp = false
+listeners = ["tcp://127.0.0.1:21110"]
+[network_identity]
+network_name = "material-local-test"
+network_secret = "local-emulator-test-only"
+[flags]
+no_tun = true
+use_smoltcp = true
+enable_ipv6 = false
+disable_upnp = true
+bind_device = false
