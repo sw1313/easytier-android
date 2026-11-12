@@ -27,7 +27,7 @@ try {
     if ($LASTEXITCODE) { throw 'Source submodule checkout failed' }
     $sourceVersion = [regex]::Match([IO.File]::ReadAllText('custom/core/easytier/Cargo.toml'), '(?m)^version\s*=\s*"(\d+\.\d+\.\d+)[^"]*"').Groups[1].Value
     if (!$sourceVersion) { throw 'Cannot identify upstream core version' }
-    $version = "$sourceVersion-custom.$([DateTime]::UtcNow.ToString('yyyyMMdd')).$($env:CORE_COMMIT.Substring(0, 8))-md6-ci$($env:GITHUB_RUN_NUMBER).$($env:GITHUB_RUN_ATTEMPT)"
+    $version = "$sourceVersion-custom.$([DateTime]::UtcNow.ToString('yyyyMMdd')).$($env:CORE_COMMIT.Substring(0, 8)).ci$($env:GITHUB_RUN_NUMBER).$($env:GITHUB_RUN_ATTEMPT)-md6"
     $lockHashes = @()
     $packages = foreach ($entry in @(
         @{ Architecture = 'aarch64'; Abi = 'arm64-v8a' },
@@ -93,7 +93,7 @@ Download and apply the core in the Custom update channel, then connect manually.
         if ($LASTEXITCODE) { throw 'Current update catalog lookup failed' }
         $previous = Join-Path $env:RUNNER_TEMP 'previous-custom.json'
         [IO.File]::WriteAllBytes($previous, [Convert]::FromBase64String($current.content))
-        ./publish-catalog.ps1 -Channel custom -Version $version -CoreVersion $sourceVersion -UpstreamCommit $env:CORE_COMMIT -AdapterRevision $env:ADAPTER_REVISION -MinAppVersionCode 13 -PreviousCatalog $previous -NotesFile $notes -SigningDirectory $signing -Repository $env:GITHUB_REPOSITORY
+        ./publish-catalog.ps1 -Channel custom -Version $version -CoreVersion $sourceVersion -UpstreamCommit $env:CORE_COMMIT -AdapterRevision $env:ADAPTER_REVISION -MinAppVersionCode 13 -HistoryLimit 20 -PreviousCatalog $previous -NotesFile $notes -SigningDirectory $signing -Repository $env:GITHUB_REPOSITORY
         $request = Join-Path $env:RUNNER_TEMP 'catalog-request.json'
         @{
             message = "Publish verified Custom core $version"

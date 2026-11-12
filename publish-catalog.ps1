@@ -12,6 +12,7 @@ param(
     [string]$PreviousCatalog = '',
     [int]$MinAppVersionCode = 0,
     [string]$AdapterRevision = '',
+    [int]$HistoryLimit = 0,
     [switch]$Empty
 )
 $ErrorActionPreference = 'Stop'
@@ -62,6 +63,7 @@ if (!$Empty) {
         $releases += @($history.releases | Where-Object version -NE $Version)
     }
 }
+if ($HistoryLimit -gt 0) { $releases = @($releases | Select-Object -First $HistoryLimit) }
 $payload = [ordered]@{
     schema = 1
     channel = $Channel
