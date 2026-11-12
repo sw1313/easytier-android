@@ -10,7 +10,7 @@
 - 节点连接类型、延迟、丢包、实时速率、累计流量和事件日志。
 - ACL、SOCKS5、端口转发、WireGuard 门户、远程 RPC 管理和配置服务器。
 - 浅色、深色与跟随系统主题。
-- 稳定版、Nightly 与 Custom 通道检查、独立适配组件更新、签名验证和更新后重连。
+- 稳定版、Nightly 与 Custom 通道检查、独立适配组件更新和签名验证。
 - Custom 核心的 P2P 传输策略、HTTP3、并行连接、流量风格与 SNI 配置。
 
 ## 界面截图
@@ -27,6 +27,10 @@
 
 从 Releases 下载与设备架构匹配的 APK，ARM64 使用 `arm64-v8a`，32 位 ARMv7 使用 `armeabi-v7a`，64 位 x86 设备与模拟器使用 `x86_64`。安装后在“网络”页面导入 TOML 或新建配置，允许系统 VPN 授权和通知权限。快捷磁贴入口位于设置页顶部，连接状态变化时实时更新高亮，长按磁贴打开应用界面。[下载安装包](https://github.com/sw1313/easytier-android/releases/latest)
 
+从 1.2.9 起，应用更新、进程重建和核心切换后，需要在概览或快捷磁贴手动连接 VPN。
+
+Android 默认 MTU 为 1280，适用于新建及未填写 MTU 的配置。填写 MTU 后按填写值使用。可在可视化配置中搜索 MTU 调整，保存后手动重连生效。
+
 首页“出口节点”可以选择互联网出口并设置 DNS。出口设备需要配置 EasyTier 的 `enable_exit_node`、系统转发和源 NAT。当前出口通道提供 IPv4 互联网出口，IPv6 默认路由由 VPN 管理。
 
 示例配置采用保留示例域名与通用私有网段，使用时填写自己的节点与网络身份。[示例配置](examples/phone.toml)
@@ -35,7 +39,7 @@
 
 ## 核心更新
 
-设置页可以切换稳定版、Nightly 与 Custom 更新通道，核心版本和 Android 适配构建号分开展示。Nightly 与 Custom 按应用接口、Android 版本和进程架构筛选签名兼容包，选择最新可下载版本。下载、校验并重新启动应用后恢复原来的连接与出口设置。Custom 首次使用需要安装 1.2.8 或更高版本，再选择 Custom 通道并应用兼容核心。[核心更新说明](docs/UPDATES.md)
+设置页可以切换稳定版、Nightly 与 Custom 更新通道，核心版本和 Android 适配构建号分开展示。Nightly 与 Custom 按应用接口、Android 版本和进程架构筛选签名兼容包，选择最新可下载版本。下载、校验并重新启动应用后，从概览或快捷磁贴手动连接。Custom 首次使用需要安装 1.2.8 或更高版本，再选择 Custom 通道并应用兼容核心。[核心更新说明](docs/UPDATES.md)
 
 <img src="docs/screenshots/custom.png" alt="模拟器中的 Custom 核心更新通道" width="320" />
 

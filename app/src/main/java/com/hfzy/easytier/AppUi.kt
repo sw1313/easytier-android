@@ -344,7 +344,7 @@ private val LightColors = lightColorScheme(
                 Text("连接与快捷操作", style = MaterialTheme.typography.titleMedium)
                 SettingsAction(Icons.Outlined.Widgets, "添加快捷磁贴", "将 EasyTier 添加到通知栏快捷设置", activity::addTile)
                 SettingsAction(Icons.Outlined.BatteryChargingFull, "后台运行设置", "小米手机请允许自启动与后台运行", activity::batterySettings)
-                SettingsAction(Icons.Outlined.VpnKey, "系统 VPN 设置", "可启用始终开启的 VPN", activity::vpnSettings)
+                SettingsAction(Icons.Outlined.VpnKey, "系统 VPN 设置", "管理 VPN 授权与连接", activity::vpnSettings)
             }
         }
         item { CoreUpdateCard(activity) }

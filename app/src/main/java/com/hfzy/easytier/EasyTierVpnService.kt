@@ -46,7 +46,6 @@ class EasyTierVpnService : VpnService() {
                     if (command != null) {
                         stopCore()
                         if (command.isEmpty()) {
-                            prefs.edit().putBoolean("wanted", false).apply()
                             AppState.publish(this@EasyTierVpnService, VpnState())
                             stopForeground(STOP_FOREGROUND_REMOVE)
                             stopSelf()
@@ -62,7 +61,6 @@ class EasyTierVpnService : VpnService() {
                     val message = error.message ?: "VPN 启动失败"
                     AppState.log(message)
                     AppState.publish(this@EasyTierVpnService, VpnState(phase = "error", error = message))
-                    prefs.edit().putBoolean("wanted", false).apply()
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
                     continue
@@ -72,25 +70,21 @@ class EasyTierVpnService : VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == DISCONNECT) {
+        if (intent?.action != CONNECT) {
             commands.trySend("")
             return START_NOT_STICKY
         }
         showNotification("正在连接…", initial = true)
-        if (intent == null && !prefs.getBoolean("wanted", false)) {
-            commands.trySend("")
-            return START_NOT_STICKY
-        }
         val id = intent?.getStringExtra("profile") ?: prefs.getString("active", "").orEmpty()
         if (current?.id != id || intent?.getBooleanExtra("restart", false) == true) commands.trySend(id)
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun startCore(id: String) {
         ProfileStore(this).load()
         if (id == "cloud") {
             startedAt = SystemClock.elapsedRealtime()
-            prefs.edit().putBoolean("wanted", true).putString("active", id).apply()
+            prefs.edit().putString("active", id).apply()
             AppState.publish(this, VpnState(phase = "connecting", profileId = "cloud", since = startedAt))
             startCloud()
             return
@@ -103,7 +97,7 @@ class EasyTierVpnService : VpnService() {
         lastRx = 0
         lastTx = 0
         lastCoreEvents = emptySet()
-        prefs.edit().putBoolean("wanted", true).putString("active", id).apply()
+        prefs.edit().putString("active", id).apply()
         AppState.publish(this, VpnState(phase = "connecting", profileId = id, since = startedAt))
         AppState.log("正在连接 ${profile.title}")
         NativeCore.request(if (id.startsWith("cloud-")) "startCloudProfile" else "start", profile.raw)
@@ -129,7 +123,7 @@ class EasyTierVpnService : VpnService() {
         val received = data.array("profiles").objects()
         received.forEach { item ->
             val id = "cloud-" + item.getString("id")
-            val raw = item.getString("toml")
+            val raw = prepareProfile(item.getString("toml"))
             val old = AppState.profiles.value.firstOrNull { it.id == id }
             val profile = if (old?.raw == raw) old else ProfileStore(this).save("云端 · " + item.text("name"), raw, id, select = false)
             if (current?.id == id) current = profile
@@ -163,7 +157,7 @@ class EasyTierVpnService : VpnService() {
         val key = ip + ipv6 + routes.joinToString() + profile.meta.optInt("mtu") + data.optLong("generation")
         if (!noTun && key != routeKey) {
             val parts = ip.split('/')
-            val builder = Builder().setSession(profile.title).setMtu(profile.meta.optInt("mtu", 1360))
+            val builder = Builder().setSession(profile.title).setMtu(profile.meta.optInt("mtu", DEFAULT_ANDROID_MTU))
                 .addAddress(parts[0], parts.getOrNull(1)?.toInt() ?: 24)
                 .addDisallowedApplication(packageName).setBlocking(false)
                 .setConfigureIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
@@ -252,7 +246,6 @@ class EasyTierVpnService : VpnService() {
     }
 
     override fun onRevoke() {
-        prefs.edit().putBoolean("wanted", false).apply()
         AppState.log("系统已撤销 VPN 连接")
         commands.trySend("")
         super.onRevoke()

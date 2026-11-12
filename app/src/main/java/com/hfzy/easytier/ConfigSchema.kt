@@ -63,7 +63,7 @@ val configSections = listOf(
     )),
     ConfigSection("连接与性能", listOf(FieldSpec("flags", "连接参数", "object", children = listOf(
         FieldSpec("default_protocol", "默认传输协议", hint = "tcp / udp / quic / wg / ws / wss"),
-        number("mtu", "MTU", "手机推荐 1360"), flag("latency_first", "优先低延迟路径"),
+        number("mtu", "MTU", "默认 $DEFAULT_ANDROID_MTU，可根据链路调整"), flag("latency_first", "优先低延迟路径"),
         flag("enable_ipv6", "启用 IPv6 传输"), flag("disable_p2p", "禁用 P2P"),
         flag("p2p_only", "仅使用 P2P"), flag("lazy_p2p", "按需建立 P2P"), flag("need_p2p", "强制尝试 P2P"),
         flag("disable_tcp_hole_punching", "禁用 TCP 打洞"), flag("disable_udp_hole_punching", "禁用 UDP 打洞"),

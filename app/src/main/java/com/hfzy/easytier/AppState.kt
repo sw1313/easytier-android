@@ -10,6 +10,8 @@ import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
+const val DEFAULT_ANDROID_MTU = 1280
+
 object NativeCore {
     private var loaded = false
     var loadedVersion = CoreUpdates.BUNDLED_VERSION
@@ -134,15 +136,22 @@ class ProfileStore(private val context: Context) {
     }
 }
 
-private fun prepareProfile(raw: String): String {
-    if (!NativeCore.request("version").optBoolean("portal_clients")) return raw
+internal fun prepareProfile(raw: String): String {
     val document = NativeCore.request("decode", raw)
-    val portal = document.optJSONObject("vpn_portal_config") ?: return raw
-    if (portal.optString("wireguard_private_key").isBlank()) {
+    check(!document.has("flags") || document.optJSONObject("flags") != null) { "flags 需要使用配置表" }
+    val flags = document.optJSONObject("flags") ?: JSONObject().also { document.put("flags", it) }
+    var changed = false
+    if (!flags.has("mtu")) {
+        flags.put("mtu", DEFAULT_ANDROID_MTU)
+        changed = true
+    }
+    val portal = document.optJSONObject("vpn_portal_config")
+    if (portal != null && NativeCore.request("version").optBoolean("portal_clients") && portal.optString("wireguard_private_key").isBlank()) {
         val key = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
         portal.put("wireguard_private_key", android.util.Base64.encodeToString(key, android.util.Base64.NO_WRAP))
+        changed = true
     }
-    return NativeCore.request("encode", document.toString()).getString("toml")
+    return if (changed) NativeCore.request("encode", document.toString()).getString("toml") else raw
 }
 
 fun JSONArray.objects(): List<JSONObject> = (0 until length()).mapNotNull { optJSONObject(it) }
@@ -161,7 +170,7 @@ val defaultConfig = """
     network_secret = ""
 
     [flags]
-    mtu = 1360
+    mtu = $DEFAULT_ANDROID_MTU
     latency_first = true
     default_protocol = "udp"
 """.trimIndent()

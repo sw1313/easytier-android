@@ -16,11 +16,114 @@ class ProbeInstrumentation : Instrumentation() {
         uiAutomation.executeShellCommand(command)
     ).bufferedReader().use { it.readText() }
 
+    private fun exchangeOverShell(command: String, input: String): String {
+        check(android.os.Build.VERSION.SDK_INT >= 31) { "Traffic instrumentation requires Android 12 or later" }
+        val descriptors = uiAutomation.executeShellCommandRw(command)
+        return android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptors[0]).bufferedReader().use { reader ->
+            android.os.ParcelFileDescriptor.AutoCloseOutputStream(descriptors[1]).use { writer ->
+                writer.write(input.toByteArray(Charsets.UTF_8))
+            }
+            reader.readText()
+        }
+    }
+
     override fun onStart() {
         val results = Bundle()
         try {
             val context = targetContext
             NativeCore.load(context)
+            if (arguments.getString("mtuDefaults") == "true") {
+                check(NativeCore.request("decode", defaultConfig).getJSONObject("flags").getInt("mtu") == 1280)
+                val raw = "ipv4 = \"10.211.50.2/24\"\ndhcp = false\nlisteners = []\n"
+                val store = ProfileStore(context)
+                val imported = store.save("默认 MTU 验证", raw, "default-mtu-regression", select = false)
+                check(imported.meta.getInt("mtu") == 1280)
+                check(NativeCore.request("decode", imported.raw).getJSONObject("flags").getInt("mtu") == 1280)
+                val explicit = store.save("自定义 MTU 验证", raw + "[flags]\nmtu = 1360", "explicit-mtu-regression", select = false)
+                check(explicit.meta.getInt("mtu") == 1360)
+                val reset = NativeCore.request("decode", explicit.raw)
+                reset.getJSONObject("flags").remove("mtu")
+                val resetProfile = store.save("恢复默认 MTU", NativeCore.request("encode", reset.toString()).getString("toml"), "reset-mtu-regression", select = false)
+                check(resetProfile.meta.getInt("mtu") == 1280)
+                val legacyFile = java.io.File(context.filesDir, "profiles/legacy-mtu-regression.json")
+                legacyFile.writeText(JSONObject().put("id", "legacy-mtu-regression").put("title", "旧配置 MTU 验证").put("toml", raw).toString())
+                store.load()
+                val legacy = AppState.profiles.value.first { it.id == "legacy-mtu-regression" }
+                check(legacy.meta.getInt("mtu") == 1280)
+                check(JSONObject(legacyFile.readText()).getString("toml").contains("mtu = 1280"))
+                check(runCatching { store.save("无效配置", raw + "flags = \"invalid\"", "invalid-flags-regression", select = false) }.isFailure)
+                results.putString("result", "PASS MTU 1280 defaults / import / legacy profile load / explicit MTU / reset / invalid flags rejection")
+                finish(Activity.RESULT_OK, results)
+                return
+            }
+            if (arguments.getString("manualStartSetup") == "true") {
+                val profile = ProfileStore(context).save("手动连接验证", """
+                    instance_name = "manual-start-test"
+                    hostname = "android-manual-start"
+                    ipv4 = "10.211.50.2/24"
+                    dhcp = false
+                    listeners = []
+                    [network_identity]
+                    network_name = "material-local-test"
+                    network_secret = "local-emulator-test-only"
+                    [[peer]]
+                    uri = "tcp://10.0.2.2:21110"
+                    [flags]
+                    enable_ipv6 = false
+                    disable_upnp = true
+                """.trimIndent(), "manual-start-regression")
+                check(context.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE).edit()
+                    .putBoolean("wanted", true).putString("active", profile.id).commit())
+                val timestamps = context.getSharedPreferences("core", android.content.Context.MODE_PRIVATE).edit()
+                timestamps.putLong("lastChecked", System.currentTimeMillis())
+                timestamps.putLong("lastChecked:nightly", System.currentTimeMillis())
+                timestamps.putLong("lastChecked:custom", System.currentTimeMillis())
+                check(timestamps.commit())
+                results.putString("result", "PASS seeded legacy automatic reconnect preference and saved profile")
+                finish(Activity.RESULT_OK, results)
+                return
+            }
+            if (arguments.getString("manualStartStopped") == "true" || arguments.getString("recreatedConnectIntent") == "true") {
+                val connectivity = context.getSystemService(android.net.ConnectivityManager::class.java)
+                fun hasVpn(): Boolean = connectivity.allNetworks.any { network ->
+                    connectivity.getNetworkCapabilities(network)
+                        ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
+                }
+                fun awaitCondition(message: String, condition: () -> Boolean) {
+                    repeat(100) {
+                        if (condition()) return
+                        Thread.sleep(100)
+                    }
+                    error(message)
+                }
+                fun checkStopped() {
+                    check(!hasVpn()) { "Android VPN was automatically established" }
+                    check(!AppState.vpn.value.active) { "App unexpectedly resumed connection" }
+                    check(!NativeCore.request("snapshot").optBoolean("running")) { "Core unexpectedly resumed connection" }
+                }
+                if (arguments.getString("recreatedConnectIntent") == "true") {
+                    check(android.net.VpnService.prepare(context) == null)
+                    val activity = startActivitySync(android.content.Intent(context, MainActivity::class.java)
+                        .setAction(EasyTierVpnService.CONNECT).putExtra("profile", "manual-start-regression")
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)) as MainActivity
+                    awaitCondition("Explicit connect action did not establish VPN") { hasVpn() && AppState.vpn.value.phase == "connected" }
+                    check(activity.intent.action != EasyTierVpnService.CONNECT) { "Connect action was not consumed" }
+                    runOnMainSync { EasyTierVpnService.disconnect(context) }
+                    awaitCondition("VPN did not stop") { !hasVpn() && !AppState.vpn.value.active }
+                    runOnMainSync { activity.recreate() }
+                    waitForIdleSync()
+                    Thread.sleep(2000)
+                    checkStopped()
+                } else {
+                    Thread.sleep(2000)
+                    checkStopped()
+                    ProfileStore(context).load()
+                    check(AppState.profiles.value.any { it.id == "manual-start-regression" })
+                }
+                results.putString("result", "PASS manual connection policy / actual system VPN absent / core stopped / profile retained / consumed activity connect action")
+                finish(Activity.RESULT_OK, results)
+                return
+            }
             if (arguments.getString("stageCore") != null) {
                 val version = CoreUpdates.install(context, java.io.File(arguments.getString("stageCore")!!))
                 check(CoreUpdates.activeLibrary(context) != null)
@@ -117,8 +220,10 @@ class ProbeInstrumentation : Instrumentation() {
                     while (AppState.vpn.value.phase != "connected" && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(200)
                     check(AppState.vpn.value.phase == "connected") { "VPN failed: ${AppState.vpn.value.error}" }
                     Thread.sleep(1500)
-                    val response = shell("echo nightly-vpn-test | toybox nc -w 5 198.18.0.1 21130")
-                    check(response.contains("nightly-vpn-test")) { "VPN TCP payload did not return" }
+                    val response = exchangeOverShell("toybox nc -w 5 -W 10 -q 10 198.18.0.1 21130", "nightly-vpn-test\n")
+                    check(response == "nightly-vpn-test\n") { "VPN TCP payload did not return" }
+                    val largeResponse = exchangeOverShell("toybox nc -w 5 -W 10 -q 10 198.18.0.1 21131", "GET / HTTP/1.0\r\n\r\n")
+                    check(largeResponse.endsWith("mtu-test-".repeat(8192))) { "Large TCP response did not cross the VPN" }
                     val snapshot = NativeCore.request("snapshot")
                     check(snapshot.optLong("rx") > 0 && snapshot.optLong("tx") > 0)
                     check(snapshot.array("portal_clients").objects().any { usablePortalConfig(it.text("config")) }) { "Portal did not generate a named client config" }
@@ -132,7 +237,7 @@ class ProbeInstrumentation : Instrumentation() {
                         }
                         check(parallel) { "Custom parallel connections were not established" }
                     }
-                    results.putString("result", "PASS Android TUN / peer connection / subnet proxy TCP payload / counters / named WireGuard portal" + if (customTransport) " / HTTP3 / parallel connections" else "")
+                    results.putString("result", "PASS Android TUN / peer connection / large TCP response / subnet proxy TCP payload / counters / named WireGuard portal" + if (customTransport) " / HTTP3 / parallel connections" else "")
                 } finally {
                     runOnMainSync { EasyTierVpnService.disconnect(context) }
                     repeat(50) { if (AppState.vpn.value.active) Thread.sleep(100) }
@@ -231,6 +336,12 @@ class ProbeInstrumentation : Instrumentation() {
                     repeat(3) {
                         runOnMainSync { EasyTierVpnService.connect(context, profile.id) }
                         awaitCondition("Android VPN network was not established") { hasVpn() }
+                        awaitCondition("Android VPN MTU did not use the default 1280") {
+                            connectivity.allNetworks.any { network ->
+                                connectivity.getNetworkCapabilities(network)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true &&
+                                    connectivity.getLinkProperties(network)?.mtu == 1280
+                            }
+                        }
                         check(AppState.vpn.value.active)
                         runOnMainSync { EasyTierVpnService.disconnect(context) }
                         awaitCondition("App did not report disconnection") { !AppState.vpn.value.active }

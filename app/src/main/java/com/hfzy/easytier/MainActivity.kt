@@ -70,19 +70,20 @@ class MainActivity : ComponentActivity() {
             notice = message
         }
         setContent { EasyTierApp(this) }
-        if (intent?.action == EasyTierVpnService.CONNECT) connect(intent.getStringExtra("profile") ?: AppState.selected.value)
-        else {
-            val settings = getSharedPreferences("settings", MODE_PRIVATE)
-            if (settings.getBoolean("wanted", false) && !AppState.vpn.value.active) {
-                connect(settings.getString("active", "").orEmpty())
-            }
-        }
+        AppState.publish(this, AppState.vpn.value)
+        if (savedInstanceState == null) handleConnectIntent(intent)
         if (System.currentTimeMillis() - CoreUpdates.lastChecked(this) >= 6 * 60 * 60 * 1000L) checkCoreUpdate()
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.action == EasyTierVpnService.CONNECT) connect(intent.getStringExtra("profile") ?: AppState.selected.value)
+        handleConnectIntent(intent)
+    }
+    private fun handleConnectIntent(request: Intent) {
+        if (request.action != EasyTierVpnService.CONNECT) return
+        val profile = request.getStringExtra("profile") ?: AppState.selected.value
+        setIntent(Intent(request).apply { action = null; removeExtra("profile") })
+        connect(profile)
     }
     fun connect(id: String = AppState.selected.value) {
         if (id.isBlank()) { page = 1; notice = "请新建或导入网络配置"; return }
@@ -155,17 +156,15 @@ class MainActivity : ComponentActivity() {
     }
     fun restartCore() {
         if (busy) return
-        val resume = AppState.vpn.value.takeIf { it.active }?.profileId.orEmpty()
         busy = true
         lifecycleScope.launch {
             try {
-                if (resume.isNotBlank()) {
+                if (AppState.vpn.value.active) {
                     EasyTierVpnService.disconnect(this@MainActivity)
                     withTimeout(10_000) { AppState.vpn.first { !it.active } }
                 }
-                getSharedPreferences("settings", MODE_PRIVATE).edit().putBoolean("wanted", false).commit()
                 startActivity(Intent(this@MainActivity, CoreRestartActivity::class.java)
-                    .putExtra("oldPid", android.os.Process.myPid()).putExtra("profile", resume)
+                    .putExtra("oldPid", android.os.Process.myPid())
                     .putExtra("expectedCore", CoreUpdates.version(this@MainActivity))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
             } catch (error: Exception) {

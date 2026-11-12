@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
     var restart by remember { mutableStateOf(false) }
     var notes by remember { mutableStateOf(false) }
     if (restart) AlertDialog(onDismissRequest = { restart = false }, title = { Text("应用核心更新") }, text = {
-        Text("应用将重新启动，加载 ${CoreCatalog.displayVersion(selected)}。" + if (AppState.vpn.value.active) "随后恢复当前网络连接和出口节点设置。" else "")
+        Text("应用将重新启动，加载 ${CoreCatalog.displayVersion(selected)}。重启后可手动连接网络。")
     }, confirmButton = { TextButton(onClick = { restart = false; activity.restartCore() }) { Text("立即应用") } },
         dismissButton = { TextButton(onClick = { restart = false }) { Text("稍后") } })
     if (customUrl != null) AlertDialog(onDismissRequest = { customUrl = null }, title = { Text("从 URL 导入") }, text = {
@@ -80,7 +80,7 @@ import androidx.compose.ui.unit.dp
             UpdatePhase.CHECKING -> "正在检查${channel.label}和兼容更新源…"
             UpdatePhase.WAITING -> state.message
             UpdatePhase.CURRENT -> state.message.ifBlank { channelStatus }
-            UpdatePhase.AVAILABLE -> if (changingChannel) "${channel.label}兼容核心已就绪，下载后可应用并重连。" else if (adapterOnly) "Android 适配组件已就绪" else "发现核心更新 ${state.release?.coreVersion}"
+            UpdatePhase.AVAILABLE -> if (changingChannel) "${channel.label}兼容核心已就绪，下载后可应用并重启。" else if (adapterOnly) "Android 适配组件已就绪" else "发现核心更新 ${state.release?.coreVersion}"
             UpdatePhase.DOWNLOADING -> if (adapterOnly) "正在下载并校验适配组件…" else "正在下载并校验核心…"
             UpdatePhase.READY -> if (adapterOnly) "Android 适配组件已就绪，重新启动后生效" else "核心更新已就绪，重新启动后生效"
             UpdatePhase.ERROR -> state.message
@@ -97,7 +97,7 @@ import androidx.compose.ui.unit.dp
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (state.phase == UpdatePhase.AVAILABLE) Button(onClick = activity::downloadCoreUpdate, enabled = !activity.busy) { Text(if (changingChannel) "切换至${channel.label}" else if (adapterOnly) "更新适配组件" else "下载核心更新") }
-            if (state.phase == UpdatePhase.READY) Button(onClick = { restart = true }, enabled = !activity.busy) { Text(if (AppState.vpn.value.active) "应用并重连" else "应用并重启") }
+            if (state.phase == UpdatePhase.READY) Button(onClick = { restart = true }, enabled = !activity.busy) { Text("应用并重启") }
             OutlinedButton(onClick = activity::checkCoreUpdate, enabled = !activity.busy) { Text(if (state.phase == UpdatePhase.CHECKING) "正在检查" else "检查更新") }
         }
         val checked = CoreUpdates.lastChecked(activity, channel)

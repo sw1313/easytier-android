@@ -12,6 +12,6 @@ network_secret = "CHANGE-ME"
 uri = "udp://relay.example.com:11010"
 
 [flags]
-mtu = 1360
+mtu = 1280
 latency_first = true
 default_protocol = "udp"
