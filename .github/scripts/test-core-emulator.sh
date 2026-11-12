@@ -18,6 +18,6 @@ adb -s "$serial" shell am force-stop com.hfzy.easytier
 adb -s "$serial" shell am start -n com.hfzy.easytier/.MainActivity
 probe -e manualStartStopped true
 probe -e recreatedConnectIntent true
-for attempt in 1 2 3; do
-  probe -e exitUpdate true -e exitEmulator true -e exitDns 1.1.1.1 -e ciChannel "$CORE_CHANNEL"
-done
+# Keep successive update checks in one peer session. vpnLifecycle covers three
+# separate TUN connect/disconnect cycles.
+probe -e exitUpdate true -e exitEmulator true -e exitDns 1.1.1.1 -e ciChannel "$CORE_CHANNEL" -e checks 3

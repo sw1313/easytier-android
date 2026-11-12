@@ -56,7 +56,7 @@ jobs:
 
   test:
     needs: [check, build]
-    if: always() && needs.check.outputs.needed == 'true' && (needs.build.result == 'success' || needs.build.result == 'skipped')
+    if: ${{ !cancelled() && needs.check.outputs.needed == 'true' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -125,7 +125,7 @@ jobs:
 
   publish:
     needs: [check, build, test]
-    if: always() && needs.test.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped')
+    if: ${{ !cancelled() && needs.test.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

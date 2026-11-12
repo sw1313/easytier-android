@@ -85,18 +85,23 @@ class ProbeInstrumentation : Instrumentation() {
                 val appUsesVpn = connectivity.getNetworkCapabilities(connectivity.activeNetwork)
                     ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
                 check(appUsesVpn == socketProtection) { "Unexpected app VPN routing" }
-                if (arguments.getString("exitEmulator") == "true") {
-                    val response = exchangeOverShell("toybox nc -w 5 -W 10 -q 10 198.18.0.1 21130", "GET /exit-probe.txt HTTP/1.0\r\n\r\n")
-                    check(response.endsWith("exit-proxy-ok\n")) { "Exit-node packet forwarding failed, response=${response.take(250)}" }
+                val checkCount = arguments.getString("checks", "1")!!.toInt()
+                require(checkCount in 1..5)
+                var exitIp = ""
+                repeat(checkCount) {
+                    if (arguments.getString("exitEmulator") == "true") {
+                        val response = exchangeOverShell("toybox nc -w 5 -W 10 -q 10 198.18.0.1 21130", "GET /exit-probe.txt HTTP/1.0\r\n\r\n")
+                        check(response.endsWith("exit-proxy-ok\n")) { "Exit-node packet forwarding failed, response=${response.take(250)}" }
+                    }
+                    val channel = CoreUpdates.channel(context)
+                    val catalog = CoreUpdates.readRemote(CoreCatalog.url(channel))
+                    check(CoreCatalog.releases(context, catalog, channel).isNotEmpty())
+                    val state = CoreCatalog.check(context, channel)
+                    check(state.phase in listOf(UpdatePhase.CURRENT, UpdatePhase.AVAILABLE, UpdatePhase.READY))
+                    exitIp = String(CoreUpdates.readRemote("https://api4.ipify.org", 128)).trim()
+                    arguments.getString("expectedExit")?.let { check(exitIp == it) { "Unexpected exit IP $exitIp" } }
                 }
-                val channel = CoreUpdates.channel(context)
-                val catalog = CoreUpdates.readRemote(CoreCatalog.url(channel))
-                check(CoreCatalog.releases(context, catalog, channel).isNotEmpty())
-                val state = CoreCatalog.check(context, channel)
-                check(state.phase in listOf(UpdatePhase.CURRENT, UpdatePhase.AVAILABLE, UpdatePhase.READY))
-                val exitIp = String(CoreUpdates.readRemote("https://api4.ipify.org", 128)).trim()
-                arguments.getString("expectedExit")?.let { check(exitIp == it) { "Unexpected exit IP $exitIp" } }
-                results.putString("result", "PASS app VPN routing=$appUsesVpn / exit packets / GitHub signed catalog / downloadable core check / update request IP $exitIp")
+                results.putString("result", "PASS $checkCount update checks / app VPN routing=$appUsesVpn / exit packets / GitHub signed catalog / downloadable core check / update request IP $exitIp")
                 finish(Activity.RESULT_OK, results)
                 return
             }
