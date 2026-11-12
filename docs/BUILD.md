@@ -66,6 +66,14 @@ Nightly 构建通过 `-Channel nightly` 选择，产物放在 `dist/nightly-libs
 ./build-native.ps1 -Channel nightly -Architecture x86_64
 ```
 
+Custom 使用 `custom/core` 子模块，固定在 `7a4b2b105b3da373ce24ebb629c04be767fcab7b`。`custom/native` 复用 `nightly/native/src`，通过 `custom` feature 适配 Custom 接口，并使用独立锁文件。构建产物放在 `dist/custom-libs/<ABI>`。
+
+```powershell
+./build-native.ps1 -Channel custom -Architecture aarch64
+./build-native.ps1 -Channel custom -Architecture armv7
+./build-native.ps1 -Channel custom -Architecture x86_64
+```
+
 ## 发布 APK
 
 ```powershell

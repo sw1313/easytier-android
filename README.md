@@ -1,6 +1,6 @@
 # EasyTier Android
 
-原生 Android EasyTier 客户端，使用 Kotlin、Jetpack Compose Material 3 与官方 Rust 核心。
+原生 Android EasyTier 客户端，使用 Kotlin、Jetpack Compose Material 3，支持官方及 EasyTier-Custom Rust 核心。
 
 ## 功能
 
@@ -10,7 +10,8 @@
 - 节点连接类型、延迟、丢包、实时速率、累计流量和事件日志。
 - ACL、SOCKS5、端口转发、WireGuard 门户、远程 RPC 管理和配置服务器。
 - 浅色、深色与跟随系统主题。
-- 稳定版与 Nightly 通道检查、独立适配组件更新、签名验证和更新后重连。
+- 稳定版、Nightly 与 Custom 通道检查、独立适配组件更新、签名验证和更新后重连。
+- Custom 核心的 P2P 传输策略、HTTP3、并行连接、流量风格与 SNI 配置。
 
 ## 界面截图
 
@@ -34,7 +35,9 @@
 
 ## 核心更新
 
-设置页可以切换稳定版与 Nightly 更新通道，官方核心版本和 Android 适配构建号分开展示。Nightly 按应用接口、Android 版本和进程架构筛选签名兼容包，选择最新可下载版本。下载、校验并重新启动应用后恢复原来的连接与出口设置。[核心更新说明](docs/UPDATES.md)
+设置页可以切换稳定版、Nightly 与 Custom 更新通道，核心版本和 Android 适配构建号分开展示。Nightly 与 Custom 按应用接口、Android 版本和进程架构筛选签名兼容包，选择最新可下载版本。下载、校验并重新启动应用后恢复原来的连接与出口设置。Custom 首次使用需要安装 1.2.8 或更高版本，再选择 Custom 通道并应用兼容核心。[核心更新说明](docs/UPDATES.md)
+
+<img src="docs/screenshots/custom.png" alt="模拟器中的 Custom 核心更新通道" width="320" />
 
 ## 源码与构建
 
@@ -47,7 +50,7 @@ cd easytier-android
 ./gradlew.bat :app:assembleDebug -Pabi=arm64-v8a
 ```
 
-核心源码通过固定版本的官方子模块管理。完整源码发行包包含对应的核心源码。[构建说明](docs/BUILD.md)
+稳定版和 Nightly 使用官方核心子模块，Custom 使用 EasyTier-Custom 子模块，各自固定源码提交。完整源码发行包包含对应的核心源码。[构建说明](docs/BUILD.md)
 
 ## 发布与校验
 

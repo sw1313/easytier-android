@@ -14,6 +14,10 @@ static OPERATIONS: Mutex<()> = Mutex::new(());
 static ACTIVE: Mutex<Option<uuid::Uuid>> = Mutex::new(None);
 static CLOUD: Mutex<Option<easytier::web_client::WebClient>> = Mutex::new(None);
 static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+#[cfg(feature = "custom")]
+const UPSTREAM_COMMIT: &str = "7a4b2b105b3da373ce24ebb629c04be767fcab7b";
+#[cfg(not(feature = "custom"))]
+const UPSTREAM_COMMIT: &str = "2abb1676b475947e46c527b57acc5f296cb48482";
 struct MobileHooks;
 #[async_trait::async_trait]
 impl easytier::web_client::WebClientHooks for MobileHooks {
@@ -76,8 +80,10 @@ fn metadata(cfg: &TomlConfigLoader) -> Value {
 
 fn dispatch(method: &str, payload: &str) -> anyhow::Result<Value> {
     if method == "version" {
-        return Ok(json!({"core": easytier::VERSION, "api": 1, "adapter_build": 4,
-            "upstream_commit": "2abb1676b475947e46c527b57acc5f296cb48482", "portal_clients": true}));
+        return Ok(json!({"core": easytier::VERSION, "api": 1,
+            "adapter_build": if cfg!(feature = "custom") { 5 } else { 4 },
+            "upstream_commit": UPSTREAM_COMMIT, "portal_clients": true,
+            "custom": cfg!(feature = "custom")}));
     }
     if method == "remote" { return remote::call(payload); }
     if method == "cloudStart" {
@@ -88,6 +94,8 @@ fn dispatch(method: &str, payload: &str) -> anyhow::Result<Value> {
                 explicit_machine_id: args["machineId"].as_str().map(str::to_owned), state_dir: None,
             }, Some("EasyTier MD Android".into()), args["secure"].as_bool().unwrap_or(true),
             MANAGER.clone(), Some(Arc::new(MobileHooks)),
+            #[cfg(feature = "custom")]
+            Arc::new(easytier_core::management::InstanceStateStore::in_memory()),
         ))?;
         *CLOUD.lock().unwrap() = Some(cloud);
         return Ok(json!({}));

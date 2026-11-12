@@ -7,7 +7,7 @@ param(
     [string]$Repository = 'sw1313/easytier-android',
     [string]$SourceUrl = '',
     [Parameter(Mandatory)][string]$SigningDirectory,
-    [ValidateSet('stable', 'nightly')][string]$Channel = 'stable',
+    [ValidateSet('stable', 'nightly', 'custom')][string]$Channel = 'stable',
     [string]$UpstreamCommit = '',
     [string]$PreviousCatalog = '',
     [switch]$Empty
@@ -16,8 +16,8 @@ $ErrorActionPreference = 'Stop'
 $releases = @()
 if (!$Empty) {
     if (!$Version -or !$CoreVersion -or !$NotesFile) { throw 'Version, CoreVersion, and NotesFile are required for a release' }
-    if (($Channel -eq 'nightly') -ne $Version.Contains('-nightly.')) { throw 'Core version and channel must agree' }
-    if ($Channel -eq 'nightly' -and $UpstreamCommit -notmatch '^[0-9a-f]{40}$') { throw 'Nightly requires the full official source commit' }
+    if (($Channel -eq 'nightly') -ne $Version.Contains('-nightly.') -or ($Channel -eq 'custom') -ne $Version.Contains('-custom.')) { throw 'Core version and channel must agree' }
+    if ($Channel -ne 'stable' -and $UpstreamCommit -notmatch '^[0-9a-f]{40}$') { throw 'The core channel requires the full upstream source commit' }
     if (!$BaseUrl) { $BaseUrl = "https://github.com/$Repository/releases/download/core-v$Version" }
     $assets = [ordered]@{}
     foreach ($abi in @('arm64-v8a', 'armeabi-v7a', 'x86_64')) {
@@ -34,7 +34,7 @@ if (!$Empty) {
         version = $Version
         coreVersion = $CoreVersion
         api = 1
-        minAppVersionCode = if ($Channel -eq 'nightly') { 10 } else { 3 }
+        minAppVersionCode = switch ($Channel) { custom { 11 } nightly { 10 } default { 3 } }
         minSdk = 26
         publishedAt = [DateTime]::UtcNow.ToString('o')
         notes = [IO.File]::ReadAllText((Resolve-Path $NotesFile))

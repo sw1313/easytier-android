@@ -59,12 +59,16 @@ import androidx.compose.ui.unit.dp
             }
         }
         DataRow("当前核心", currentCore)
-        if (state.upstream.isNotBlank()) DataRow(if (channel == CoreChannel.NIGHTLY) "官方 Nightly" else "官方稳定版", state.upstream)
+        if (state.upstream.isNotBlank()) DataRow(when (channel) {
+            CoreChannel.STABLE -> "官方稳定版"
+            CoreChannel.NIGHTLY -> "官方 Nightly"
+            CoreChannel.CUSTOM -> "Custom 构建"
+        }, state.upstream)
         DataRow("Android 适配构建", CoreCatalog.adapterBuild(NativeCore.loadedVersion))
         if (selected != NativeCore.loadedVersion) DataRow("等待应用", CoreCatalog.displayVersion(selected))
         if (state.release != null && !adapterOnly) DataRow("可用核心", state.release.coreVersion)
         val channelStatus = when {
-            channel == CoreChannel.NIGHTLY && state.release != null -> "已是最新可下载的 Nightly 兼容包"
+            channel != CoreChannel.STABLE && state.release != null -> "已是最新可下载的 ${channel.label} 兼容包"
             state.upstreamPending -> "官方 ${state.upstream} 已更新，Android 兼容包准备中。"
             state.upstream == currentCore -> "已是最新官方稳定版"
             state.release == null && state.upstream.isBlank() -> "点击检查${channel.label}更新"

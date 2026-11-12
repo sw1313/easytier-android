@@ -28,6 +28,40 @@ class ProbeInstrumentation : Instrumentation() {
                 finish(Activity.RESULT_OK, results)
                 return
             }
+            if (arguments.getString("customLoaded") == "true") {
+                check(CoreCatalog.channelOfVersion(NativeCore.loadedVersion) == CoreChannel.CUSTOM)
+                val version = NativeCore.request("version")
+                check(version.optBoolean("custom") && version.getInt("adapter_build") == 5)
+                check(version.getString("upstream_commit") == "7a4b2b105b3da373ce24ebb629c04be767fcab7b")
+                val document = NativeCore.request("decode", defaultConfig)
+                document.put("parallel_connections", 2).put("traffic_disguise", "video").put("disable_parallel_connections", false)
+                document.getJSONObject("flags").put("p2p_disguise_mode", "off").put("close_redundant_conns_when_disguised", false)
+                val raw = NativeCore.request("encode", document.toString()).getString("toml")
+                val roundtrip = NativeCore.request("decode", raw)
+                check(roundtrip.getInt("parallel_connections") == 2)
+                check(roundtrip.getString("traffic_disguise") == "video")
+                check(roundtrip.getJSONObject("flags").getString("p2p_disguise_mode") == "off")
+                check(!roundtrip.getJSONObject("flags").getBoolean("close_redundant_conns_when_disguised"))
+                document.put("parallel_connections", 17)
+                check(runCatching { NativeCore.request("encode", document.toString()) }.isFailure)
+                CoreUpdates.setChannel(context, CoreChannel.CUSTOM)
+                check(CoreUpdates.channel(context) == CoreChannel.CUSTOM)
+                val before = CoreUpdates.lastChecked(context, CoreChannel.NIGHTLY)
+                CoreUpdates.markChecked(context, CoreChannel.CUSTOM)
+                check(CoreUpdates.lastChecked(context, CoreChannel.CUSTOM) > 0)
+                check(CoreUpdates.lastChecked(context, CoreChannel.NIGHTLY) == before)
+                arguments.getString("customCatalog")?.let { filename ->
+                    val bytes = java.io.File(filename).readBytes()
+                    val release = CoreCatalog.parse(context, bytes, CoreChannel.CUSTOM)
+                    check(release.version == NativeCore.loadedVersion)
+                    check(runCatching { CoreCatalog.parse(context, bytes, CoreChannel.STABLE) }.isFailure)
+                    check(runCatching { CoreCatalog.parse(context, bytes, CoreChannel.NIGHTLY) }.isFailure)
+                    check(CoreCatalog.evaluate(context, CoreChannel.CUSTOM, release, "Custom", "a".repeat(40)).phase == UpdatePhase.CURRENT)
+                }
+                results.putString("result", "PASS real Custom JNI / pinned source / Custom TOML roundtrip / bounds / channel persistence / scoped checks / signed catalog isolation")
+                finish(Activity.RESULT_OK, results)
+                return
+            }
             if (arguments.getString("nightlyLoaded") == "true") {
                 check(CoreCatalog.channelOfVersion(NativeCore.loadedVersion) == CoreChannel.NIGHTLY)
                 val version = NativeCore.request("version")
@@ -50,20 +84,23 @@ class ProbeInstrumentation : Instrumentation() {
             }
             if (arguments.getString("vpnTraffic") == "true") {
                 check(android.net.VpnService.prepare(context) == null)
+                val customTransport = arguments.getString("customTransport") == "true"
                 val raw = """
                     instance_name = "Nightly emulator traffic"
                     hostname = "android-traffic-test"
                     ipv4 = "10.211.50.2/24"
                     dhcp = false
                     listeners = []
+                    ${if (customTransport) "parallel_connections = 2" else ""}
                     [network_identity]
-                    network_name = "material-local-test"
-                    network_secret = "local-emulator-test-only"
+                    network_name = "${if (customTransport) "custom-local-test" else "material-local-test"}"
+                    network_secret = "${if (customTransport) "local-custom-test-only" else "local-emulator-test-only"}"
                     [[peer]]
-                    uri = "tcp://10.0.2.2:21110"
+                    uri = "${if (customTransport) "http3://10.0.2.2:21140" else "tcp://10.0.2.2:21110"}"
                     [flags]
                     enable_ipv6 = false
                     disable_upnp = true
+                    ${if (customTransport) "p2p_disguise_mode = \"off\"\nclose_redundant_conns_when_disguised = false" else ""}
                     [vpn_portal_config]
                     wireguard_listen = "127.0.0.1:22022"
                     [[vpn_portal_config.clients]]
@@ -85,7 +122,17 @@ class ProbeInstrumentation : Instrumentation() {
                     val snapshot = NativeCore.request("snapshot")
                     check(snapshot.optLong("rx") > 0 && snapshot.optLong("tx") > 0)
                     check(snapshot.array("portal_clients").objects().any { usablePortalConfig(it.text("config")) }) { "Portal did not generate a named client config" }
-                    results.putString("result", "PASS Android TUN / peer connection / subnet proxy TCP payload / counters / named WireGuard portal")
+                    if (customTransport) {
+                        check(snapshot.array("nodes").objects().any { it.optJSONObject("connections")?.optJSONObject("tunnel")?.text("tunnel_type") == "http3" }) { "Custom HTTP3 transport was not selected" }
+                        var parallel = false
+                        repeat(30) {
+                            if (NativeCore.request("snapshot").getJSONObject("details").array("peers").objects()
+                                    .any { it.array("conns").objects().count { conn -> !conn.optBoolean("is_closed") } >= 2 }) parallel = true
+                            if (!parallel) Thread.sleep(200)
+                        }
+                        check(parallel) { "Custom parallel connections were not established" }
+                    }
+                    results.putString("result", "PASS Android TUN / peer connection / subnet proxy TCP payload / counters / named WireGuard portal" + if (customTransport) " / HTTP3 / parallel connections" else "")
                 } finally {
                     runOnMainSync { EasyTierVpnService.disconnect(context) }
                     repeat(50) { if (AppState.vpn.value.active) Thread.sleep(100) }
@@ -299,7 +346,7 @@ class ProbeInstrumentation : Instrumentation() {
             if (arguments.getString("updated") == "true") {
                 check(NativeCore.loadedVersion == "2.6.4-md3")
                 check(NativeCore.request("version").getInt("adapter_build") == 3)
-                check(CoreCatalog.check(context).phase == UpdatePhase.CURRENT)
+                check(CoreCatalog.check(context, CoreChannel.STABLE).phase == UpdatePhase.CURRENT)
                 if (arguments.getString("legacyPortal") == "true") {
                     ProfileStore(context).load()
                     val portal = AppState.profiles.value.first { it.id == "legacy-portal-test" }

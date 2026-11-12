@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["native"]
+exclude = ["core"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.95"
+
+[profile.release]
+panic = "abort"
+lto = "thin"
+codegen-units = 16
+opt-level = 3
+strip = true

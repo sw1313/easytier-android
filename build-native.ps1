@@ -1,9 +1,9 @@
 param(
     [ValidateSet('aarch64', 'armv7', 'x86_64')][string]$Architecture = 'aarch64',
-    [ValidateSet('stable', 'nightly')][string]$Channel = 'stable'
+    [ValidateSet('stable', 'nightly', 'custom')][string]$Channel = 'stable'
 )
 $ErrorActionPreference = 'Stop'
-$buildRoot = if ($Channel -eq 'nightly') { Join-Path $PSScriptRoot 'nightly' } else { $PSScriptRoot }
+$buildRoot = if ($Channel -eq 'stable') { $PSScriptRoot } else { Join-Path $PSScriptRoot $Channel }
 $env:PATH = "$env:USERPROFILE\.cargo\bin;" + $env:PATH
 $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA 'Android/Sdk' }
 $ndkBin = Join-Path $sdk 'ndk/29.0.14206865/toolchains/llvm/prebuilt/windows-x86_64/bin'
@@ -51,8 +51,8 @@ Push-Location $buildRoot
 try {
     & cargo +1.95.0 build -p easytier-material-native --target $target --release
     if ($LASTEXITCODE -ne 0) { throw 'Native build failed' }
-    $destination = if ($Channel -eq 'nightly') {
-        Join-Path $PSScriptRoot "dist/nightly-libs/$abi"
+    $destination = if ($Channel -ne 'stable') {
+        Join-Path $PSScriptRoot "dist/$Channel-libs/$abi"
     } else { Join-Path $PSScriptRoot "app/src/main/jniLibs/$abi" }
     New-Item -ItemType Directory -Path $destination -Force | Out-Null
     Copy-Item -LiteralPath "target/$target/release/libeasytier_mobile.so" -Destination $destination

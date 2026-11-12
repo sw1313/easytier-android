@@ -4,3 +4,6 @@
 [submodule "nightly/core"]
 	path = nightly/core
 	url = https://github.com/EasyTier/EasyTier.git
+[submodule "custom/core"]
+	path = custom/core
+	url = https://github.com/225284228a-droid/EasyTier-Custom.git

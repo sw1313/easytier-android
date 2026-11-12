@@ -29,6 +29,9 @@ import org.json.JSONObject
     var rawMode by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var search by remember { mutableStateOf("") }
+    val sections = remember {
+        if (NativeCore.request("version").optBoolean("custom")) configSections + customConfigSections else configSections
+    }
     fun serialize(): String = NativeCore.request("encode", doc.toString()).getString("toml")
     Column(Modifier.fillMaxSize().imePadding()) {
         TopAppBar(title = { Text(if (profile == null) "新建网络" else "编辑网络") }, navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Outlined.ArrowBack, "返回") } }, actions = {
@@ -53,12 +56,12 @@ import org.json.JSONObject
         if (rawMode) {
             OutlinedTextField(raw, { raw = it; error = "" }, Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
         } else {
-            val sectionIndex = configSections.indexOfFirst { it.title == initialSection }
+            val sectionIndex = sections.indexOfFirst { it.title == initialSection }
             val scroll = rememberLazyListState(initialFirstVisibleItemIndex = if (sectionIndex >= 0) sectionIndex + 2 else 0)
             LazyColumn(state = scroll, contentPadding = PaddingValues(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 item { OutlinedTextField(title, { title = it }, label = { Text("显示名称") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
                 item { OutlinedTextField(search, { search = it }, label = { Text("搜索配置项") }, modifier = Modifier.fillMaxWidth(), leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true) }
-                configSections.forEachIndexed { index, section ->
+                sections.forEachIndexed { index, section ->
                     item(key = section.title) {
                         val shown = if (search.isBlank()) section.fields else filterFields(section.fields, search)
                         if (shown.isNotEmpty()) {
@@ -89,7 +92,9 @@ private fun filterFields(fields: List<FieldSpec>, query: String): List<FieldSpec
 }
 
 @Composable private fun FieldControl(parent: JSONObject, spec: FieldSpec, path: String, onChange: () -> Unit) {
-    val namedPortal = remember { NativeCore.request("version").optBoolean("portal_clients") }
+    val capabilities = remember { NativeCore.request("version") }
+    val namedPortal = capabilities.optBoolean("portal_clients")
+    val customCore = capabilities.optBoolean("custom")
     when (spec.kind) {
         "object", "optional" -> {
             val existing = parent.optJSONObject(spec.key)
@@ -167,11 +172,11 @@ private fun filterFields(fields: List<FieldSpec>, query: String): List<FieldSpec
                     Text(if (!parent.has(spec.key)) "默认${if (spec.hint.isBlank()) "" else " · ${spec.hint}"}" else spec.hint.ifBlank { spec.key }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (parent.has(spec.key)) IconButton(onClick = { parent.remove(spec.key); onChange() }, Modifier.size(32.dp)) { Icon(Icons.Outlined.RestartAlt, "恢复默认", Modifier.size(18.dp)) }
-                Switch(parent.optBoolean(spec.key, defaultBoolean(spec.key)), { parent.put(spec.key, it); onChange() })
+                Switch(parent.optBoolean(spec.key, defaultBoolean(spec.key) || (customCore && spec.key == "private_mode")), { parent.put(spec.key, it); onChange() })
             }
         }
         else -> {
-            val options = enumOptions(spec.key)
+            val options = enumOptions(spec.key, customCore)
             if (options.isNotEmpty()) {
                 var open by remember(path) { mutableStateOf(false) }
                 val current = parent.text(spec.key)
@@ -213,10 +218,12 @@ private fun filterFields(fields: List<FieldSpec>, query: String): List<FieldSpec
     }
 }
 
-private fun defaultBoolean(key: String) = key in setOf("dhcp", "enable_encryption", "enable_ipv6", "multi_thread", "bind_device")
+private fun defaultBoolean(key: String) = key in setOf("dhcp", "enable_encryption", "enable_ipv6", "multi_thread", "bind_device", "close_redundant_conns_when_disguised")
 
-private fun enumOptions(key: String): List<Pair<String, String>> = when (key) {
-    "default_protocol" -> listOf("udp", "tcp", "quic", "wg", "ws", "wss").map { it to it.uppercase() }
+private fun enumOptions(key: String, customCore: Boolean): List<Pair<String, String>> = when (key) {
+    "default_protocol" -> (listOf("udp", "tcp", "quic", "wg", "ws", "wss") + if (customCore) listOf("http3") else emptyList()).map { it to it.uppercase() }
+    "p2p_disguise_mode" -> listOf("prefer" to "优先 WSS / HTTP3", "off" to "普通 TCP / UDP 优先", "disabled" to "普通 TCP / UDP", "only" to "仅 WSS / HTTP3")
+    "traffic_disguise" -> listOf("speedtest" to "测速风格", "video" to "视频风格")
     "proto" -> listOf("tcp" to "TCP", "udp" to "UDP")
     "protocol" -> listOf("0" to "未指定", "1" to "TCP", "2" to "UDP", "3" to "ICMP", "4" to "ICMPv6", "5" to "任意协议")
     "action", "default_action" -> listOf("0" to "继续匹配", "1" to "允许", "2" to "丢弃")

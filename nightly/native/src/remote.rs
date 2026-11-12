@@ -56,7 +56,9 @@ async fn execute(args: Value) -> anyhow::Result<Value> {
             Ok(json!({"id": response.inst_id.map(uuid::Uuid::from).map(|id| id.to_string())}))
         }
         "stop" => {
-            client.delete_network_instance(ctrl, DeleteNetworkInstanceRequest { inst_ids: vec![id()?.into()] }).await?;
+            client.delete_network_instance(ctrl, DeleteNetworkInstanceRequest {
+                inst_ids: vec![id()?.into()], ..Default::default()
+            }).await?;
             Ok(json!({}))
         }
         "info" => {

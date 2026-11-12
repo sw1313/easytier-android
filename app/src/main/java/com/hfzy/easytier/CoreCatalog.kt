@@ -7,7 +7,7 @@ import org.json.JSONObject
 
 enum class UpdatePhase { IDLE, CHECKING, WAITING, CURRENT, AVAILABLE, DOWNLOADING, READY, ERROR }
 enum class CoreChannel(val id: String, val label: String) {
-    STABLE("stable", "稳定版"), NIGHTLY("nightly", "Nightly")
+    STABLE("stable", "稳定版"), NIGHTLY("nightly", "Nightly"), CUSTOM("custom", "Custom")
 }
 data class CoreRelease(
     val version: String,
@@ -35,8 +35,11 @@ object CoreCatalog {
     private const val UPSTREAM = "https://api.github.com/repos/EasyTier/EasyTier/releases/"
 
     fun url(channel: CoreChannel): String = URL.replace("stable.json", "${channel.id}.json")
-    fun channelOfVersion(version: String): CoreChannel =
-        if (coreVersion(version).contains("-nightly.")) CoreChannel.NIGHTLY else CoreChannel.STABLE
+    fun channelOfVersion(version: String): CoreChannel = when {
+        coreVersion(version).contains("-nightly.") -> CoreChannel.NIGHTLY
+        coreVersion(version).contains("-custom.") -> CoreChannel.CUSTOM
+        else -> CoreChannel.STABLE
+    }
 
     fun coreVersion(version: String): String = version.removePrefix("v").replace(Regex("-md\\d+$"), "")
     fun adapterBuild(version: String): String = version.substringAfter("-md", "").ifBlank { "内置" }
@@ -98,7 +101,7 @@ object CoreCatalog {
             compareVersions(version, version)
             require(channelOfVersion(version) == channel) { "核心版本与更新通道不一致" }
             val commit = item.optString("upstreamCommit")
-            require(channel != CoreChannel.NIGHTLY || commit.matches(Regex("[0-9a-f]{40}"))) { "Nightly 缺少对应的官方构建提交" }
+            require(channel == CoreChannel.STABLE || commit.matches(Regex("[0-9a-f]{40}"))) { "核心缺少对应的源码提交" }
             val published = item.getString("publishedAt")
             java.time.Instant.parse(published)
             CoreRelease(version, item.getString("coreVersion"), item.getString("notes"), published, url, size, hash, channel, commit)
@@ -106,7 +109,7 @@ object CoreCatalog {
     }
 
     fun newestAvailable(releases: List<CoreRelease>, channel: CoreChannel, available: (CoreRelease) -> Boolean): CoreRelease? {
-        val ordered = if (channel == CoreChannel.NIGHTLY) releases.sortedByDescending { java.time.Instant.parse(it.publishedAt) }
+        val ordered = if (channel != CoreChannel.STABLE) releases.sortedByDescending { java.time.Instant.parse(it.publishedAt) }
         else releases.sortedWith { a, b -> compareVersions(b.version, a.version) }
         return ordered.firstOrNull(available)
     }
@@ -121,7 +124,7 @@ object CoreCatalog {
             message = "${channel.label} 暂无适用于当前应用架构的兼容核心包，准备完成后可在此更新。",
         )
         require(release.channel == channel) { "核心更新通道不一致" }
-        val pending = if (channel == CoreChannel.NIGHTLY) {
+        val pending = if (channel != CoreChannel.STABLE) {
             upstreamCommit.isNotBlank() && upstreamCommit != release.upstreamCommit
         } else {
             require(upstream.isBlank() || compareVersions(release.coreVersion, upstream) <= 0) { "更新包尚未对应官方稳定版" }
@@ -130,7 +133,7 @@ object CoreCatalog {
         val selected = CoreUpdates.version(context)
         val update = when {
             channelOfVersion(selected) != channel -> true
-            channel == CoreChannel.NIGHTLY -> release.version != selected
+            channel != CoreChannel.STABLE -> release.version != selected
             else -> compareVersions(release.version, selected) > 0
         }
         val phase = when {
@@ -146,6 +149,13 @@ object CoreCatalog {
         val release = newestAvailable(candidates, channel) { CoreUpdates.isDownloadAvailable(it.url) }
         check(candidates.isEmpty() || release != null) { "兼容核心包暂时无法下载，请稍后重试。" }
         val upstream = runCatching {
+            if (channel == CoreChannel.CUSTOM) {
+                val address = "https://api.github.com/repos/225284228a-droid/EasyTier-Custom/actions/workflows/build.yml/runs?branch=main&status=success&per_page=1"
+                val info = JSONObject(String(CoreUpdates.readRemote(address), Charsets.UTF_8))
+                val commit = info.getJSONArray("workflow_runs").getJSONObject(0).getString("head_sha")
+                require(commit.matches(Regex("[0-9a-f]{40}"))) { "无法识别 Custom 构建" }
+                return@runCatching "Custom (${commit.take(8)})" to commit
+            }
             val suffix = if (channel == CoreChannel.STABLE) "latest" else "tags/nightly"
             val info = JSONObject(String(CoreUpdates.readRemote(UPSTREAM + suffix), Charsets.UTF_8))
             if (channel == CoreChannel.STABLE) info.getString("tag_name").removePrefix("v") to ""

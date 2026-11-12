@@ -7,6 +7,9 @@ edition.workspace = true
 name = "easytier_mobile"
 crate-type = ["cdylib"]
 
+[features]
+custom = []
+
 [dependencies]
 easytier = { path = "../core/easytier" }
 easytier-core = { path = "../core/easytier-core", features = ["management"] }

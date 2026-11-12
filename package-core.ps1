@@ -3,13 +3,13 @@ param(
     [string]$Version = '2.6.4-md3',
     [string]$OutputDirectory = (Join-Path $PSScriptRoot 'dist'),
     [Parameter(Mandatory)][string]$SigningDirectory,
-    [ValidateSet('stable', 'nightly')][string]$Channel = 'stable',
+    [ValidateSet('stable', 'nightly', 'custom')][string]$Channel = 'stable',
     [string]$LibraryDirectory
 )
 $ErrorActionPreference = 'Stop'
-if (($Channel -eq 'nightly') -ne $Version.Contains('-nightly.')) { throw 'Core version and channel must agree' }
+if (($Channel -eq 'nightly') -ne $Version.Contains('-nightly.') -or ($Channel -eq 'custom') -ne $Version.Contains('-custom.')) { throw 'Core version and channel must agree' }
 if (!$LibraryDirectory) {
-    $LibraryDirectory = if ($Channel -eq 'nightly') { Join-Path $PSScriptRoot 'dist/nightly-libs' } else { Join-Path $PSScriptRoot 'app/src/main/jniLibs' }
+    $LibraryDirectory = if ($Channel -ne 'stable') { Join-Path $PSScriptRoot "dist/$Channel-libs" } else { Join-Path $PSScriptRoot 'app/src/main/jniLibs' }
 }
 $library = Join-Path $LibraryDirectory "$Abi/libeasytier_mobile.so"
 if (!(Test-Path -LiteralPath $library)) { throw 'Build the native core first' }

@@ -2,7 +2,7 @@
 
 ## 版本显示
 
-应用分别显示官方核心版本和 Android 适配构建号。
+应用分别显示核心版本和 Android 适配构建号。
 
 - `2.6.4` 表示官方 EasyTier 核心版本。
 - 适配构建 `3` 表示 Android JNI 与打包层的构建编号。
@@ -12,14 +12,15 @@
 
 ## 更新通道
 
-在“设置 → 核心更新”选择“稳定版”或“Nightly”。切换后保存选择并立即检查，两个通道独立记录检查时间。
+在“设置 → 核心更新”选择“稳定版”、“Nightly”或“Custom”。切换后保存选择并立即检查，各通道独立记录检查时间。
 
 - 稳定版读取官方最新稳定 Release 和本仓库 `updates/stable.json`。
 - Nightly 读取官方滚动 `nightly` Release 的提交信息和本仓库 `updates/nightly.json`。
+- Custom 读取 EasyTier-Custom 最新成功的 main 分支核心构建提交和本仓库 `updates/custom.json`。首次使用需要应用 1.2.8 或更高版本。
 - 所选通道决定后续检查的更新源。兼容包下载、校验完成后，可通过“应用并重连”加载。
-- 返回稳定版时可以下载稳定核心，即使其版本号低于当前 Nightly。
+- 返回稳定版时可以下载稳定核心，即使其版本号低于当前 Nightly 或 Custom。
 
-Nightly 从签名目录选择最新可下载的兼容包。筛选条件包括 JNI API、应用最低版本、Android 版本与当前应用进程架构。最新候选包无法下载时，继续尝试目录中的历史兼容包。只有目录中没有兼容候选时显示准备状态，有候选但暂时均无法访问时显示重试提示。官方滚动提交独立展示，更新的官方提交不会阻止已有兼容包安装。[官方 Nightly](https://github.com/EasyTier/EasyTier/releases/tag/nightly)
+Nightly 与 Custom 从各自签名目录选择最新可下载的兼容包。筛选条件包括 JNI API、应用最低版本、Android 版本与当前应用进程架构。最新候选包无法下载时，继续尝试目录中的历史兼容包。只有目录中没有兼容候选时显示准备状态，有候选但暂时均无法访问时显示重试提示。官方滚动提交独立展示，更新的官方提交不会阻止已有兼容包安装。[官方 Nightly](https://github.com/EasyTier/EasyTier/releases/tag/nightly)
 
 <img src="screenshots/nightly.png" alt="模拟器中的 Nightly 更新通道" width="320" />
 
@@ -34,7 +35,7 @@ JNI 接口兼容、现有应用功能满足需求时，可以独立更新核心�
 应用启动时每隔至少 6 小时检查一次，也可以在设置页点击“检查更新”。
 
 - 官方发布信息来自 `https://api.github.com/repos/EasyTier/EasyTier/releases/latest`。
-- 签名目录来自本仓库 `updates/stable.json` 或 `updates/nightly.json`。
+- 签名目录来自本仓库 `updates/stable.json`、`updates/nightly.json` 或 `updates/custom.json`。
 - Android 核心包由本仓库 GitHub Releases 提供，支持 `arm64-v8a`、`armeabi-v7a` 和 `x86_64`。
 
 更新包按当前应用进程的架构选择。在支持 32 位应用的 64 位设备上安装 ARMv7 APK 后，更新器会继续使用 ARMv7 核心。
@@ -43,7 +44,7 @@ JNI 接口兼容、现有应用功能满足需求时，可以独立更新核心�
 
 应用升级时会比较已选择的独立核心与内置核心版本，优先采用较新的内置核心。1.2.4 内置适配构建 3，包含断开 VPN 后释放 TUN 接口的修复。
 
-已选择的 Nightly 核心按其通道加载。核心加载失败时会回退到前一个可用核心或内置核心。
+已选择的 Nightly 与 Custom 核心按其通道加载。核心加载失败时会回退到前一个可用核心或内置核心。
 
 ## 生成核心包
 
@@ -82,3 +83,23 @@ Nightly 发布使用 `-Channel nightly`。包版本使用 `2.7.0-nightly.2026111
 Nightly 包默认从 `dist/nightly-libs` 读取动态库，也可用 `-LibraryDirectory` 指定明确的构建产物目录。发布目录默认验证并保留 `updates/<通道>.json` 中的历史条目，可用 `-PreviousCatalog` 指定来源。
 
 签名包的 `channel` 字段需要与目录、版本标识一致。空目录可以用 `./publish-catalog.ps1 -Channel nightly -Empty -SigningDirectory C:/Signing/EasyTier` 生成，应用会显示兼容包准备状态。
+
+## Custom 核心
+
+1.2.8 增加 Custom 更新通道。选择后下载签名核心，再点“应用并重启”。加载成功后，可视化配置中出现“Custom 打洞与传输”，并在默认传输协议中增加 HTTP3。P2P 策略默认优先 WSS / HTTP3，可选择普通 TCP / UDP 优先、关闭伪装或仅使用 WSS / HTTP3。并行连接数支持 1–16，流量风格支持 speedtest 和 video。
+
+Custom 兼容包的 API、Android 版本和架构满足要求时，可以在应用内继续独立更新核心。上游新提交需要先完成 JNI 适配、验证并发布签名兼容包。应用检查上游最新成功核心构建的提交，显示可下载兼容包的实际状态。[Custom 上游](https://github.com/225284228a-droid/EasyTier-Custom)
+
+```powershell
+./build-native.ps1 -Channel custom -Architecture aarch64
+./package-core.ps1 -Channel custom -Abi arm64-v8a -Version 2.7.0-custom.20261111.7a4b2b10-md5 -SigningDirectory C:/Signing/EasyTier
+./publish-catalog.ps1 -Channel custom -Version 2.7.0-custom.20261111.7a4b2b10-md5 -CoreVersion 2.7.0-custom.20261111.7a4b2b10 -UpstreamCommit 7a4b2b105b3da373ce24ebb629c04be767fcab7b -NotesFile docs/core-2.7.0-custom-md5.md -SigningDirectory C:/Signing/EasyTier
+```
+
+Custom 包默认从 `dist/custom-libs` 读取动态库，发布到对应的 `core-v<版本>` Release，并将签名目录保存为 `updates/custom.json`。
+
+<img src="screenshots/custom.png" alt="模拟器中的 Custom 更新通道" width="320" />
+
+<img src="screenshots/custom-configuration.png" alt="模拟器中的 Custom P2P 与并行传输配置" width="320" />
+
+运行验证使用 x86_64 Android 15 模拟器，包括 Custom HTTP3 双连接、真实 VPN 流量、配置服务器、远程 RPC、磁贴状态以及系统 VPN 的建立与移除。ARM64 和 ARMv7 完成构建、签名、哈希与 ELF 对齐检查，设备运行效果需在相应架构的设备上验证。

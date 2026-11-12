@@ -9,6 +9,19 @@ data class FieldSpec(
 )
 data class ConfigSection(val title: String, val fields: List<FieldSpec>)
 
+val customConfigSections = listOf(
+    ConfigSection("Custom 打洞与传输", listOf(
+        FieldSpec("flags", "P2P 策略", "object", children = listOf(
+            FieldSpec("p2p_disguise_mode", "P2P 传输策略", hint = "默认优先 WSS / HTTP3，允许回退 TCP / UDP"),
+            FieldSpec("close_redundant_conns_when_disguised", "首选连接就绪后清理多余连接", "bool"),
+        )),
+        FieldSpec("parallel_connections", "并行连接数", "number", "1–16，默认 1"),
+        FieldSpec("disable_parallel_connections", "禁用并行传输", "bool"),
+        FieldSpec("traffic_disguise", "传输流量风格"),
+        FieldSpec("sni", "WSS / HTTP3 SNI"),
+    )),
+)
+
 private fun flag(key: String, label: String, hint: String = "") = FieldSpec(key, label, "bool", hint)
 private fun list(key: String, label: String, hint: String = "") = FieldSpec(key, label, "list", hint)
 private fun number(key: String, label: String, hint: String = "") = FieldSpec(key, label, "number", hint)
