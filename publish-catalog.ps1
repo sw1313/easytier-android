@@ -10,6 +10,8 @@ param(
     [ValidateSet('stable', 'nightly', 'custom')][string]$Channel = 'stable',
     [string]$UpstreamCommit = '',
     [string]$PreviousCatalog = '',
+    [int]$MinAppVersionCode = 0,
+    [string]$AdapterRevision = '',
     [switch]$Empty
 )
 $ErrorActionPreference = 'Stop'
@@ -34,12 +36,13 @@ if (!$Empty) {
         version = $Version
         coreVersion = $CoreVersion
         api = 1
-        minAppVersionCode = switch ($Channel) { custom { 11 } nightly { 10 } default { 3 } }
+        minAppVersionCode = if ($MinAppVersionCode -gt 0) { $MinAppVersionCode } else { switch ($Channel) { custom { 11 } nightly { 10 } default { 3 } } }
         minSdk = 26
         publishedAt = [DateTime]::UtcNow.ToString('o')
         notes = [IO.File]::ReadAllText((Resolve-Path $NotesFile))
         sourceUrl = $SourceUrl
         upstreamCommit = $UpstreamCommit
+        adapterRevision = $AdapterRevision
         assets = $assets
     }
     $releases = @($release)

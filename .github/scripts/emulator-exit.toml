@@ -1,0 +1,13 @@
+ipv4 = "10.211.50.1/24"
+dhcp = false
+listeners = ["tcp://127.0.0.1:21150"]
+[network_identity]
+network_name = "emulator-exit-test"
+network_secret = "local-test-only"
+[flags]
+no_tun = true
+use_smoltcp = true
+enable_exit_node = true
+enable_ipv6 = false
+disable_upnp = true
+bind_device = false

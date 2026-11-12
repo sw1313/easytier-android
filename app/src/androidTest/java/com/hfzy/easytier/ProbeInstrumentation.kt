@@ -32,6 +32,15 @@ class ProbeInstrumentation : Instrumentation() {
         try {
             val context = targetContext
             NativeCore.load(context)
+            if (arguments.getString("ciCore") == "true") {
+                val version = NativeCore.request("version")
+                check(version.getInt("api") == 1 && version.optBoolean("custom"))
+                check(version.optBoolean("socket_protection"))
+                check(version.getString("upstream_commit") == arguments.getString("expectedCommit"))
+                results.putString("result", "PASS Custom JNI API / socket protection capability / exact upstream source")
+                finish(Activity.RESULT_OK, results)
+                return
+            }
             if (arguments.getString("exitUpdate") == "true") {
                 check(NativeCore.request("version").optBoolean("socket_protection"))
                 ProfileStore(context).load()
@@ -50,7 +59,12 @@ class ProbeInstrumentation : Instrumentation() {
                         [flags]
                         enable_ipv6 = false
                         disable_upnp = true
-                    """.trimIndent(), "emulator-exit-test")
+                    """.trimIndent(), "emulator-exit-test").also { profile ->
+                        arguments.getString("exitDns")?.let { dns ->
+                            context.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
+                                .edit().putString("exitDns:${profile.id}", dns).commit()
+                        }
+                    }
                 } else {
                     val savedId = context.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
                         .getString("active", AppState.selected.value)

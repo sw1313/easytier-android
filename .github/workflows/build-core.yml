@@ -1,6 +1,17 @@
 name: Build Android JNI cores
 
 on:
+  workflow_call:
+    inputs:
+      channel:
+        type: string
+        default: custom
+      architecture:
+        type: string
+        default: all
+      upstream_ref:
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       channel:
@@ -17,17 +28,6 @@ on:
         description: Upstream branch, tag or commit. Empty uses the pinned submodule commit.
         type: string
         default: ''
-  push:
-    paths:
-      - '.github/workflows/build-core.yml'
-      - '.github/scripts/build-core.ps1'
-      - 'build-native.ps1'
-      - 'native/**'
-      - 'nightly/native/**'
-      - 'custom/native/**'
-      - 'core'
-      - 'nightly/core'
-      - 'custom/core'
 
 permissions:
   contents: read
@@ -83,6 +83,7 @@ jobs:
         with:
           workspaces: ${{ matrix.workspace }} -> target
           key: ${{ matrix.channel }}-${{ matrix.architecture }}-ndk29
+          cache-on-failure: true
       - name: Compile and inspect JNI library
         shell: pwsh
         env:

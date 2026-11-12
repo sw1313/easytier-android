@@ -30,6 +30,8 @@ if ($LASTEXITCODE -or !($exports -match 'Java_com_hfzy_easytier_NativeCore_call'
 $destination = "ci-artifacts/$Channel/$Architecture"
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
 Copy-Item -LiteralPath $library -Destination "$destination/libeasytier_mobile.so"
+$workspace = if ($Channel -eq 'stable') { '.' } else { $Channel }
+Copy-Item -LiteralPath "$workspace/Cargo.lock" -Destination "$destination/Cargo.lock"
 & "$tools/llvm-readelf.exe" --file-header --program-headers $library > "$destination/elf.txt"
 if ($LASTEXITCODE) { throw 'ELF inspection failed' }
 [ordered]@{
@@ -38,5 +40,6 @@ if ($LASTEXITCODE) { throw 'ELF inspection failed' }
     abi = $abi
     upstreamCommit = $commit
     adapterCommit = (& git rev-parse HEAD).Trim()
+    lockSha256 = (Get-FileHash -LiteralPath "$workspace/Cargo.lock" -Algorithm SHA256).Hash.ToLowerInvariant()
     sha256 = (Get-FileHash -LiteralPath $library -Algorithm SHA256).Hash.ToLowerInvariant()
 } | ConvertTo-Json | Set-Content -LiteralPath "$destination/build-info.json" -Encoding utf8
