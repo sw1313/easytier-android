@@ -80,15 +80,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           UPSTREAM_RUN: ${{ needs.check.outputs.upstream_run }}
+          UPSTREAM_COMMIT: ${{ needs.check.outputs.commit }}
         run: |
-          mkdir -p .ci-peer
-          gh run download "$UPSTREAM_RUN" --repo 225284228a-droid/EasyTier-Custom --name easytier-linux-x86_64.tar.gz --dir .ci-peer
-          archive=$(find .ci-peer -name '*.tar.gz' -print -quit)
-          test -n "$archive"
-          tar -xzf "$archive" -C .ci-peer
-          peer=$(find .ci-peer -type f -name easytier-core -print -quit)
-          test -n "$peer"
-          chmod +x "$peer"
+          peer=$(python3 .github/scripts/prepare-peer.py "$UPSTREAM_RUN" "$UPSTREAM_COMMIT")
           "$peer" -c .github/scripts/emulator-exit.toml > .ci-peer/peer.log 2>&1 &
           echo "$!" > .ci-peer/peer.pid
           "$peer" -c .github/scripts/emulator-manual.toml > .ci-peer/manual.log 2>&1 &

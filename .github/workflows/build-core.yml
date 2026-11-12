@@ -82,8 +82,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ matrix.workspace }} -> target
-          key: ${{ matrix.channel }}-${{ matrix.architecture }}-ndk29
+          key: ${{ matrix.channel }}-${{ matrix.architecture }}-ndk29-workspace-v1
           cache-on-failure: true
+          cache-workspace-crates: true
       - name: Compile and inspect JNI library
         shell: pwsh
         env:
