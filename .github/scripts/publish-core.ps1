@@ -29,6 +29,7 @@ try {
     if (!$sourceVersion) { throw 'Cannot identify upstream core version' }
     $version = "$sourceVersion-custom.$([DateTime]::UtcNow.ToString('yyyyMMdd')).$($env:CORE_COMMIT.Substring(0, 8)).ci$($env:GITHUB_RUN_NUMBER).$($env:GITHUB_RUN_ATTEMPT)-md6"
     $lockHashes = @()
+    $buildCommit = $null
     $packages = foreach ($entry in @(
         @{ Architecture = 'aarch64'; Abi = 'arm64-v8a' },
         @{ Architecture = 'armv7'; Abi = 'armeabi-v7a' },
@@ -37,9 +38,19 @@ try {
         $artifact = "ci-artifacts/jni-custom-$($entry.Architecture)"
         $info = Get-Content "$artifact/build-info.json" -Raw | ConvertFrom-Json
         $library = "$artifact/libeasytier_mobile.so"
-        if ($info.api -ne 1 -or $info.channel -ne 'custom' -or $info.abi -ne $entry.Abi -or $info.upstreamCommit -ne $env:CORE_COMMIT -or $info.adapterCommit -ne $env:GITHUB_SHA) {
+        if ($info.api -ne 1 -or $info.channel -ne 'custom' -or $info.abi -ne $entry.Abi -or $info.upstreamCommit -ne $env:CORE_COMMIT -or $info.adapterCommit -notmatch '^[0-9a-f]{40}$') {
             throw 'Build artifact source or ABI does not match this workflow'
         }
+        if (!$buildCommit) {
+            $buildCommit = $info.adapterCommit
+            git fetch --depth=1 origin $buildCommit
+            if ($LASTEXITCODE) { throw 'Cannot retrieve the adapter source used by this build' }
+            $trees = & git rev-parse "${buildCommit}:nightly/native" "${buildCommit}:custom/native" "${buildCommit}:custom/Cargo.toml" "${buildCommit}:custom/Cargo.lock" "${buildCommit}:build-native.ps1"
+            if ($LASTEXITCODE) { throw 'Cannot identify built adapter revision' }
+            $revision = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($trees -join "`n"))).ToLowerInvariant()
+            if ($revision -ne $env:ADAPTER_REVISION) { throw 'Built adapter code differs from the current adapter source' }
+        }
+        if ($info.adapterCommit -ne $buildCommit) { throw 'Architectures were built from different adapter commits' }
         if ((Get-FileHash $library -Algorithm SHA256).Hash.ToLowerInvariant() -ne $info.sha256) { throw 'Build artifact hash mismatch' }
         $lockHash = (Get-FileHash "$artifact/Cargo.lock" -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($lockHash -ne $info.lockSha256) { throw 'Build dependency lock hash mismatch' }
@@ -69,7 +80,7 @@ try {
 
 Upstream source $($env:CORE_COMMIT)
 
-Adapter source $($env:GITHUB_SHA)
+Adapter source $buildCommit
 
 Built for ARM64, ARMv7 and x86_64. JNI API 1, Android 8.0 or later, application 1.2.10 or later.
 

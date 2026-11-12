@@ -9,6 +9,10 @@ on:
         description: Rebuild the latest successful upstream source
         type: boolean
         default: false
+      build_run:
+        description: Optional existing JNI build run for publication recovery
+        type: string
+        default: ''
   push:
     paths:
       - '.github/workflows/release-core.yml'
@@ -50,7 +54,7 @@ jobs:
 
   build:
     needs: check
-    if: needs.check.outputs.needed == 'true'
+    if: needs.check.outputs.needed == 'true' && inputs.build_run == ''
     uses: ./.github/workflows/build-core.yml
     with:
       channel: custom
@@ -59,6 +63,7 @@ jobs:
 
   test:
     needs: [check, build]
+    if: always() && needs.check.outputs.needed == 'true' && (needs.build.result == 'success' || needs.build.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -69,6 +74,8 @@ jobs:
         with:
           name: jni-custom-x86_64
           path: app/src/main/jniLibs/x86_64
+          run-id: ${{ inputs.build_run || github.run_id }}
+          github-token: ${{ github.token }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -111,6 +118,7 @@ jobs:
 
   publish:
     needs: [check, build, test]
+    if: always() && needs.test.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -124,6 +132,8 @@ jobs:
         with:
           pattern: jni-custom-*
           path: ci-artifacts
+          run-id: ${{ inputs.build_run || github.run_id }}
+          github-token: ${{ github.token }}
       - name: Sign and publish verified cores
         shell: pwsh
         env:
