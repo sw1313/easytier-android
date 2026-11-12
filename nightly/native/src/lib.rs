@@ -4,7 +4,7 @@ use easytier::{
     common::config::{ConfigFileControl, ConfigLoader, TomlConfigLoader},
     instance::factory::{NativeInstanceManager, native_instance_manager_with_runtime, attach_mobile_tun_fd},
 };
-use jni::{JNIEnv, objects::{JClass, JString}, sys::jstring};
+use jni::{JNIEnv, JavaVM, objects::{GlobalRef, JClass, JString, JValue}, sys::jstring};
 use serde_json::{Value, json};
 mod remote;
 
@@ -15,10 +15,35 @@ static ACTIVE: Mutex<Option<uuid::Uuid>> = Mutex::new(None);
 static CLOUD: Mutex<Option<easytier::web_client::WebClient>> = Mutex::new(None);
 static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 #[cfg(feature = "custom")]
-const UPSTREAM_COMMIT: &str = "7a4b2b105b3da373ce24ebb629c04be767fcab7b";
+const DEFAULT_UPSTREAM_COMMIT: &str = "7a4b2b105b3da373ce24ebb629c04be767fcab7b";
 #[cfg(not(feature = "custom"))]
-const UPSTREAM_COMMIT: &str = "2abb1676b475947e46c527b57acc5f296cb48482";
+const DEFAULT_UPSTREAM_COMMIT: &str = "2abb1676b475947e46c527b57acc5f296cb48482";
+const UPSTREAM_COMMIT: &str = match option_env!("EASYTIER_UPSTREAM_COMMIT") {
+    Some(commit) => commit,
+    None => DEFAULT_UPSTREAM_COMMIT,
+};
 struct MobileHooks;
+
+struct AndroidSocketProtector {
+    vm: JavaVM,
+    class: GlobalRef,
+}
+
+#[async_trait::async_trait]
+impl easytier::socket_protector::NativeSocketProtector for AndroidSocketProtector {
+    async fn protect(&self, socket_handle: u64) -> std::io::Result<()> {
+        let fd = i32::try_from(socket_handle)
+            .map_err(|_| std::io::Error::other("invalid Android socket descriptor"))?;
+        let mut env = self.vm.attach_current_thread()
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        let protected = env.call_static_method(
+            &self.class, "protectSocket", "(I)Z", &[JValue::Int(fd)],
+        ).and_then(|result| result.z())
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        if protected { Ok(()) }
+        else { Err(std::io::Error::other("Android VPN socket protection failed")) }
+    }
+}
 #[async_trait::async_trait]
 impl easytier::web_client::WebClientHooks for MobileHooks {
     async fn pre_run_network_instance(&self, cfg: &TomlConfigLoader) -> Result<(), String> {
@@ -81,9 +106,9 @@ fn metadata(cfg: &TomlConfigLoader) -> Value {
 fn dispatch(method: &str, payload: &str) -> anyhow::Result<Value> {
     if method == "version" {
         return Ok(json!({"core": easytier::VERSION, "api": 1,
-            "adapter_build": if cfg!(feature = "custom") { 5 } else { 4 },
+            "adapter_build": if cfg!(feature = "custom") { 6 } else { 5 },
             "upstream_commit": UPSTREAM_COMMIT, "portal_clients": true,
-            "custom": cfg!(feature = "custom")}));
+            "custom": cfg!(feature = "custom"), "socket_protection": true}));
     }
     if method == "remote" { return remote::call(payload); }
     if method == "cloudStart" {
@@ -250,6 +275,20 @@ pub extern "system" fn Java_com_hfzy_easytier_NativeCore_call(
     let result = (|| -> anyhow::Result<Value> {
         let method: String = env.get_string(&method)?.into();
         let payload: String = env.get_string(&payload)?.into();
+        if method == "socketProtection" {
+            match payload.as_str() {
+                "enable" => {
+                    let protector = AndroidSocketProtector {
+                        vm: env.get_java_vm()?,
+                        class: env.new_global_ref(&_class)?,
+                    };
+                    easytier::socket_protector::set_native_socket_protector(Some(Arc::new(protector)));
+                }
+                "disable" => easytier::socket_protector::set_native_socket_protector(None),
+                _ => anyhow::bail!("invalid socket protection operation"),
+            }
+            return Ok(json!({}));
+        }
         dispatch(&method, &payload)
     })();
     let response = match result {

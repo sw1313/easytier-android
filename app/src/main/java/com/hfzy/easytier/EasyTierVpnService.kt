@@ -32,6 +32,7 @@ class EasyTierVpnService : VpnService() {
     private var startedAt = 0L
     private var lastCoreEvents = emptySet<String>()
     private var cloudOn = false
+    private var socketProtection = false
     private val prefs by lazy { getSharedPreferences("settings", MODE_PRIVATE) }
 
     override fun onCreate() {
@@ -39,6 +40,7 @@ class EasyTierVpnService : VpnService() {
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel("vpn", "VPN 连接", NotificationManager.IMPORTANCE_LOW))
         NativeCore.load(this)
+        socketProtection = NativeCore.attachSocketProtector(this)
         scope.launch {
             while (isActive) {
                 val command = withTimeoutOrNull(1000) { commands.receive() }
@@ -159,8 +161,9 @@ class EasyTierVpnService : VpnService() {
             val parts = ip.split('/')
             val builder = Builder().setSession(profile.title).setMtu(profile.meta.optInt("mtu", DEFAULT_ANDROID_MTU))
                 .addAddress(parts[0], parts.getOrNull(1)?.toInt() ?: 24)
-                .addDisallowedApplication(packageName).setBlocking(false)
+                .setBlocking(false)
                 .setConfigureIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
+            if (!socketProtection) builder.addDisallowedApplication(packageName)
             if (!exitMode) builder.allowFamily(android.system.OsConstants.AF_INET6)
             routes.forEach { route ->
                 val normalized = ipNetwork(route).split('/')
@@ -254,6 +257,7 @@ class EasyTierVpnService : VpnService() {
     override fun onDestroy() {
         runBlocking { scope.coroutineContext.job.cancelAndJoin() }
         runCatching { stopCore() }
+        NativeCore.detachSocketProtector(this)
         if (AppState.vpn.value.phase != "error") AppState.publish(this, VpnState())
         super.onDestroy()
     }

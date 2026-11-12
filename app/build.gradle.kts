@@ -11,8 +11,8 @@ android {
         applicationId = "com.hfzy.easytier"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.2.9"
+        versionCode = 13
+        versionName = "1.2.10"
         testInstrumentationRunner = "com.hfzy.easytier.ProbeInstrumentation"
         ndk { abiFilters += (project.findProperty("abi")?.toString() ?: "arm64-v8a") }
     }

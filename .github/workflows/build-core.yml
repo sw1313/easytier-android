@@ -1,0 +1,99 @@
+name: Build Android JNI cores
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Core source channel
+        type: choice
+        options: [custom, nightly, stable, all]
+        default: custom
+      architecture:
+        description: Android architecture
+        type: choice
+        options: [all, aarch64, armv7, x86_64]
+        default: all
+      upstream_ref:
+        description: Upstream branch, tag or commit. Empty uses the pinned submodule commit.
+        type: string
+        default: ''
+  push:
+    paths:
+      - '.github/workflows/build-core.yml'
+      - '.github/scripts/build-core.ps1'
+      - 'build-native.ps1'
+      - 'native/**'
+      - 'nightly/native/**'
+      - 'custom/native/**'
+      - 'core'
+      - 'nightly/core'
+      - 'custom/core'
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.matrix.outputs.include }}
+    steps:
+      - id: matrix
+        shell: pwsh
+        env:
+          CHANNEL: ${{ inputs.channel || 'custom' }}
+          ARCHITECTURE: ${{ inputs.architecture || 'all' }}
+        run: |
+          $channels = if ($env:CHANNEL -eq 'all') { @('stable', 'nightly', 'custom') } else { @($env:CHANNEL) }
+          $architectures = if ($env:ARCHITECTURE -eq 'all') { @('aarch64', 'armv7', 'x86_64') } else { @($env:ARCHITECTURE) }
+          $matrix = foreach ($channel in $channels) {
+            foreach ($architecture in $architectures) {
+              $workspace = if ($channel -eq 'stable') { '.' } else { $channel }
+              @{ channel = $channel; architecture = $architecture; workspace = $workspace }
+            }
+          }
+          'include=' + (ConvertTo-Json -InputObject @($matrix) -Compress) >> $env:GITHUB_OUTPUT
+
+  build:
+    needs: matrix
+    runs-on: windows-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.matrix.outputs.include) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android NDK
+        shell: pwsh
+        run: |
+          & "$env:ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat" 'ndk;29.0.14206865'
+          if ($LASTEXITCODE) { throw 'Android NDK installation failed' }
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ matrix.workspace }} -> target
+          key: ${{ matrix.channel }}-${{ matrix.architecture }}-ndk29
+      - name: Compile and inspect JNI library
+        shell: pwsh
+        env:
+          CARGO_BUILD_JOBS: '2'
+          CORE_CHANNEL: ${{ matrix.channel }}
+          CORE_ARCHITECTURE: ${{ matrix.architecture }}
+          CORE_UPSTREAM_REF: ${{ inputs.upstream_ref }}
+        run: ./.github/scripts/build-core.ps1 -Channel $env:CORE_CHANNEL -Architecture $env:CORE_ARCHITECTURE -UpstreamRef $env:CORE_UPSTREAM_REF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jni-${{ matrix.channel }}-${{ matrix.architecture }}
+          path: ci-artifacts/${{ matrix.channel }}/${{ matrix.architecture }}/
+          if-no-files-found: error
+          retention-days: 3

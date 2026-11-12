@@ -14,6 +14,7 @@ const val DEFAULT_ANDROID_MTU = 1280
 
 object NativeCore {
     private var loaded = false
+    @Volatile private var vpnService: android.net.VpnService? = null
     var loadedVersion = CoreUpdates.BUNDLED_VERSION
         private set
     var loadedLibrary: File? = null
@@ -46,6 +47,25 @@ object NativeCore {
         CoreUpdates.cleanup(context)
     }
     @JvmStatic external fun call(method: String, payload: String): String
+    @JvmStatic fun protectSocket(fd: Int): Boolean = runCatching {
+        vpnService?.protect(fd) == true
+    }.getOrDefault(false)
+    fun attachSocketProtector(service: android.net.VpnService): Boolean {
+        if (!request("version").optBoolean("socket_protection")) return false
+        vpnService = service
+        try {
+            request("socketProtection", "enable")
+        } catch (error: Exception) {
+            vpnService = null
+            throw error
+        }
+        return true
+    }
+    fun detachSocketProtector(service: android.net.VpnService) {
+        if (vpnService !== service) return
+        try { request("socketProtection", "disable") }
+        finally { vpnService = null }
+    }
     fun request(method: String, payload: String = ""): JSONObject {
         val response = JSONObject(call(method, payload))
         check(response.optBoolean("ok")) { response.optString("error", "内核操作失败") }

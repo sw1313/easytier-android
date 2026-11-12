@@ -32,6 +32,33 @@ class ProbeInstrumentation : Instrumentation() {
         try {
             val context = targetContext
             NativeCore.load(context)
+            if (arguments.getString("exitUpdate") == "true") {
+                check(NativeCore.request("version").optBoolean("socket_protection"))
+                ProfileStore(context).load()
+                val savedId = context.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
+                    .getString("active", AppState.selected.value)
+                val profile = AppState.profiles.value.first { it.id == savedId }
+                check(profile.meta.optInt("exitNodes") > 0) { "Select an exit node before running this probe" }
+                check(android.net.VpnService.prepare(context) == null)
+                runOnMainSync { EasyTierVpnService.connect(context, profile.id) }
+                val deadline = android.os.SystemClock.elapsedRealtime() + 45_000
+                while (AppState.vpn.value.phase != "connected" && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(200)
+                check(AppState.vpn.value.phase == "connected") { "VPN connection failed" }
+                Thread.sleep(1500)
+                val connectivity = context.getSystemService(android.net.ConnectivityManager::class.java)
+                check(connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+                    ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true) { "App traffic still bypasses VPN" }
+                val channel = CoreUpdates.channel(context)
+                val catalog = CoreUpdates.readRemote(CoreCatalog.url(channel))
+                check(CoreCatalog.releases(context, catalog, channel).isNotEmpty())
+                val state = CoreCatalog.check(context, channel)
+                check(state.phase in listOf(UpdatePhase.CURRENT, UpdatePhase.AVAILABLE, UpdatePhase.READY))
+                val exitIp = String(CoreUpdates.readRemote("https://api4.ipify.org", 128)).trim()
+                arguments.getString("expectedExit")?.let { check(exitIp == it) { "Unexpected exit IP $exitIp" } }
+                results.putString("result", "PASS app UID uses VPN / GitHub signed catalog / downloadable core check / exit IP $exitIp")
+                finish(Activity.RESULT_OK, results)
+                return
+            }
             if (arguments.getString("mtuDefaults") == "true") {
                 check(NativeCore.request("decode", defaultConfig).getJSONObject("flags").getInt("mtu") == 1280)
                 val raw = "ipv4 = \"10.211.50.2/24\"\ndhcp = false\nlisteners = []\n"
@@ -125,7 +152,15 @@ class ProbeInstrumentation : Instrumentation() {
                 return
             }
             if (arguments.getString("stageCore") != null) {
-                val version = CoreUpdates.install(context, java.io.File(arguments.getString("stageCore")!!))
+                val path = arguments.getString("stageCore")!!
+                val file = if (path.matches(Regex("/data/local/tmp/[A-Za-z0-9._-]+"))) {
+                    java.io.File(context.cacheDir, "probe-core.zip").also { destination ->
+                        android.os.ParcelFileDescriptor.AutoCloseInputStream(
+                            uiAutomation.executeShellCommand("cat $path")
+                        ).use { input -> destination.outputStream().use { input.copyTo(it) } }
+                    }
+                } else java.io.File(path)
+                val version = CoreUpdates.install(context, file)
                 check(CoreUpdates.activeLibrary(context) != null)
                 results.putString("result", "PASS staged signed core $version")
                 finish(Activity.RESULT_OK, results)
@@ -134,7 +169,7 @@ class ProbeInstrumentation : Instrumentation() {
             if (arguments.getString("customLoaded") == "true") {
                 check(CoreCatalog.channelOfVersion(NativeCore.loadedVersion) == CoreChannel.CUSTOM)
                 val version = NativeCore.request("version")
-                check(version.optBoolean("custom") && version.getInt("adapter_build") == 5)
+                check(version.optBoolean("custom") && version.getInt("adapter_build") == 6)
                 check(version.getString("upstream_commit") == "7a4b2b105b3da373ce24ebb629c04be767fcab7b")
                 val document = NativeCore.request("decode", defaultConfig)
                 document.put("parallel_connections", 2).put("traffic_disguise", "video").put("disable_parallel_connections", false)
@@ -168,7 +203,7 @@ class ProbeInstrumentation : Instrumentation() {
             if (arguments.getString("nightlyLoaded") == "true") {
                 check(CoreCatalog.channelOfVersion(NativeCore.loadedVersion) == CoreChannel.NIGHTLY)
                 val version = NativeCore.request("version")
-                check(version.getInt("adapter_build") == 4)
+                check(version.getInt("adapter_build") == 5)
                 check(version.getString("upstream_commit") == "2abb1676b475947e46c527b57acc5f296cb48482")
                 check(version.optBoolean("portal_clients"))
                 val raw = defaultConfig + "\n[vpn_portal_config]\nclient_cidr = \"10.20.0.0/24\"\nwireguard_listen = \"127.0.0.1:22022\""
