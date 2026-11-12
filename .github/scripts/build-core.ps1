@@ -36,6 +36,7 @@ Copy-Item -LiteralPath "$workspace/Cargo.lock" -Destination "$destination/Cargo.
 if ($LASTEXITCODE) { throw 'ELF inspection failed' }
 [ordered]@{
     api = 1
+    adapterBuild = switch ($Channel) { custom { 6 } nightly { 5 } stable { if ($env:EASYTIER_ADAPTER_BUILD) { [int]$env:EASYTIER_ADAPTER_BUILD } else { 4 } } }
     channel = $Channel
     abi = $abi
     upstreamCommit = $commit

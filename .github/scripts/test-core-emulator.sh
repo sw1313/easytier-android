@@ -10,7 +10,7 @@ probe() {
   printf '%s\n' "$output"
   grep -q 'result=PASS' <<< "$output"
 }
-probe -e ciCore true -e expectedCommit "$EXPECTED_COMMIT"
+probe -e ciCore true -e expectedCommit "$EXPECTED_COMMIT" -e ciChannel "$CORE_CHANNEL" -e expectedBuild "$EXPECTED_BUILD"
 probe -e mtuDefaults true
 probe -e vpnLifecycle true
 probe -e manualStartSetup true
@@ -19,5 +19,5 @@ adb -s "$serial" shell am start -n com.hfzy.easytier/.MainActivity
 probe -e manualStartStopped true
 probe -e recreatedConnectIntent true
 for attempt in 1 2 3; do
-  probe -e exitUpdate true -e exitEmulator true -e exitDns 1.1.1.1
+  probe -e exitUpdate true -e exitEmulator true -e exitDns 1.1.1.1 -e ciChannel "$CORE_CHANNEL"
 done

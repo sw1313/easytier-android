@@ -1,144 +1,70 @@
-name: Update and publish Custom core
+name: Update and publish Android cores
 
 on:
   schedule:
     - cron: '17 */6 * * *'
   workflow_dispatch:
     inputs:
+      channel:
+        description: Core update channel
+        type: choice
+        options: [all, stable, nightly, custom]
+        default: all
       force:
-        description: Rebuild the latest successful upstream source
+        description: Rebuild even when the source has not changed
         type: boolean
         default: false
       build_run:
-        description: Optional existing JNI build run for publication recovery
+        description: Existing JNI build run for a single-channel recovery
         type: string
         default: ''
   push:
     paths:
-      - '.github/workflows/release-core.yml'
+      - '.github/workflows/release-core*.yml'
       - '.github/workflows/build-core.yml'
       - '.github/scripts/**'
       - 'build-native.ps1'
       - 'package-core.ps1'
       - 'publish-catalog.ps1'
+      - 'native/**'
       - 'nightly/native/**'
       - 'custom/native/**'
+      - 'Cargo.*'
+      - 'nightly/Cargo.*'
       - 'custom/Cargo.*'
 
 permissions:
   contents: read
   actions: read
 
-concurrency:
-  group: publish-custom-core
-  cancel-in-progress: false
-
 jobs:
-  check:
+  channels:
     runs-on: ubuntu-latest
     outputs:
-      needed: ${{ steps.check.outputs.needed }}
-      commit: ${{ steps.check.outputs.commit }}
-      upstream_run: ${{ steps.check.outputs.upstream_run }}
-      revision: ${{ steps.check.outputs.revision }}
+      values: ${{ steps.channels.outputs.values }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - id: check
+      - id: channels
         shell: pwsh
         env:
-          GH_TOKEN: ${{ github.token }}
-          FORCE_CORE: ${{ inputs.force || false }}
-        run: ./.github/scripts/check-core.ps1
-
-  build:
-    needs: check
-    if: needs.check.outputs.needed == 'true' && inputs.build_run == ''
-    uses: ./.github/workflows/build-core.yml
-    with:
-      channel: custom
-      architecture: all
-      upstream_ref: ${{ needs.check.outputs.commit }}
-
-  test:
-    needs: [check, build]
-    if: always() && needs.check.outputs.needed == 'true' && (needs.build.result == 'success' || needs.build.result == 'skipped')
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@v4
-        with:
-          name: jni-custom-x86_64
-          path: app/src/main/jniLibs/x86_64
-          run-id: ${{ inputs.build_run || github.run_id }}
-          github-token: ${{ github.token }}
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Build test application
-        run: bash gradlew :app:assembleDebug :app:assembleDebugAndroidTest -Pabi=x86_64
-      - name: Prepare loopback exit peer
-        env:
-          GH_TOKEN: ${{ github.token }}
-          UPSTREAM_RUN: ${{ needs.check.outputs.upstream_run }}
-          UPSTREAM_COMMIT: ${{ needs.check.outputs.commit }}
+          CHANNEL: ${{ inputs.channel || 'all' }}
+          BUILD_RUN: ${{ inputs.build_run }}
         run: |
-          peer=$(python3 .github/scripts/prepare-peer.py "$UPSTREAM_RUN" "$UPSTREAM_COMMIT")
-          "$peer" -c .github/scripts/emulator-exit.toml > .ci-peer/peer.log 2>&1 &
-          echo "$!" > .ci-peer/peer.pid
-          "$peer" -c .github/scripts/emulator-manual.toml > .ci-peer/manual.log 2>&1 &
-          echo "$!" > .ci-peer/manual.pid
-      - name: Enable emulator acceleration
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          target: google_apis
-          profile: pixel_6
-          disable-animations: true
-          script: bash .github/scripts/test-core-emulator.sh
-        env:
-          EXPECTED_COMMIT: ${{ needs.check.outputs.commit }}
-      - name: Stop test peer
-        if: always()
-        run: |
-          for pid in .ci-peer/*.pid; do
-            if test -f "$pid"; then kill "$(cat "$pid")" || true; fi
-          done
-
-  publish:
-    needs: [check, build, test]
-    if: always() && needs.test.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped')
-    runs-on: ubuntu-latest
+          if ($env:CHANNEL -eq 'all' -and $env:BUILD_RUN) { throw 'Recovery requires one explicit channel' }
+          $channels = if ($env:CHANNEL -eq 'all') { @('stable', 'nightly', 'custom') } else { @($env:CHANNEL) }
+          'values=' + (ConvertTo-Json -InputObject @($channels) -Compress) >> $env:GITHUB_OUTPUT
+  update:
+    needs: channels
     permissions:
       contents: write
       actions: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          persist-credentials: false
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: jni-custom-*
-          path: ci-artifacts
-          run-id: ${{ inputs.build_run || github.run_id }}
-          github-token: ${{ github.token }}
-      - name: Sign and publish verified cores
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CORE_SIGNING_PRIVATE_KEY: ${{ secrets.CORE_SIGNING_PRIVATE_KEY }}
-          CORE_COMMIT: ${{ needs.check.outputs.commit }}
-          ADAPTER_REVISION: ${{ needs.check.outputs.revision }}
-        run: ./.github/scripts/publish-core.ps1
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: ${{ fromJSON(needs.channels.outputs.values) }}
+    uses: ./.github/workflows/release-core-channel.yml
+    with:
+      channel: ${{ matrix.channel }}
+      force: ${{ inputs.force || false }}
+      build_run: ${{ inputs.build_run || '' }}
+    secrets:
+      CORE_SIGNING_PRIVATE_KEY: ${{ secrets.CORE_SIGNING_PRIVATE_KEY }}

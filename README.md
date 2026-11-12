@@ -56,7 +56,7 @@ cd easytier-android
 
 稳定版和 Nightly 使用官方核心子模块，Custom 使用 EasyTier-Custom 子模块，各自固定源码提交。完整源码发行包包含对应的核心源码。[构建说明](docs/BUILD.md)
 
-Custom 核心每 6 小时自动检查上游成功构建，完成三个架构编译和 Android 模拟器测试后，自动签名发布兼容核心包与更新目录。Actions 也支持指定上游源码提交手动编译。[自动更新流程](docs/UPDATES.md#github-actions-编译)
+稳定版、Nightly 和 Custom 核心每 6 小时自动检查上游，完成三个架构编译和 Android 模拟器测试后，自动签名发布兼容核心包与对应通道的更新目录。Actions 也支持指定通道和上游源码提交手动编译。[自动更新流程](docs/UPDATES.md#github-actions-编译)
 
 ## 发布与校验
 

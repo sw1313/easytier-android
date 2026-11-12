@@ -12,6 +12,9 @@ on:
       upstream_ref:
         type: string
         default: ''
+      adapter_build:
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       channel:
@@ -92,6 +95,7 @@ jobs:
           CORE_CHANNEL: ${{ matrix.channel }}
           CORE_ARCHITECTURE: ${{ matrix.architecture }}
           CORE_UPSTREAM_REF: ${{ inputs.upstream_ref }}
+          EASYTIER_ADAPTER_BUILD: ${{ inputs.adapter_build }}
         run: ./.github/scripts/build-core.ps1 -Channel $env:CORE_CHANNEL -Architecture $env:CORE_ARCHITECTURE -UpstreamRef $env:CORE_UPSTREAM_REF
       - uses: actions/upload-artifact@v4
         with:

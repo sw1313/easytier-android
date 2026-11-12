@@ -14,6 +14,10 @@ static OPERATIONS: Mutex<()> = Mutex::new(());
 static ACTIVE: Mutex<Option<uuid::Uuid>> = Mutex::new(None);
 static CLOUD: Mutex<Option<easytier::web_client::WebClient>> = Mutex::new(None);
 static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+const UPSTREAM_COMMIT: &str = match option_env!("EASYTIER_UPSTREAM_COMMIT") {
+    Some(commit) => commit,
+    None => "8428a89d2dabc94c97d370ec607c6ca142473626",
+};
 struct MobileHooks;
 #[async_trait::async_trait]
 impl easytier::web_client::WebClientHooks for MobileHooks {
@@ -54,7 +58,9 @@ fn metadata(cfg: &TomlConfigLoader) -> Value {
 
 fn dispatch(method: &str, payload: &str) -> anyhow::Result<Value> {
     if method == "version" {
-        return Ok(json!({"core": easytier::VERSION, "api": 1, "adapter_build": 3}));
+        let build = option_env!("EASYTIER_ADAPTER_BUILD").and_then(|value| value.parse::<u32>().ok()).unwrap_or(4);
+        return Ok(json!({"core": easytier::VERSION, "api": 1, "adapter_build": build,
+            "upstream_commit": UPSTREAM_COMMIT}));
     }
     if method == "remote" { return remote::call(payload); }
     if method == "cloudStart" {

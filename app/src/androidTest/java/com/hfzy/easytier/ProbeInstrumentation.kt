@@ -34,18 +34,22 @@ class ProbeInstrumentation : Instrumentation() {
             NativeCore.load(context)
             if (arguments.getString("ciCore") == "true") {
                 val version = NativeCore.request("version")
-                check(version.getInt("api") == 1 && version.optBoolean("custom"))
-                check(version.optBoolean("socket_protection"))
+                val channel = arguments.getString("ciChannel", "custom")
+                check(version.getInt("api") == 1 && version.optBoolean("custom") == (channel == "custom"))
+                check(version.optBoolean("socket_protection") == (channel != "stable"))
+                check(version.getInt("adapter_build") == arguments.getString("expectedBuild")!!.toInt())
                 check(version.getString("upstream_commit") == arguments.getString("expectedCommit"))
-                results.putString("result", "PASS Custom JNI API / socket protection capability / exact upstream source")
+                results.putString("result", "PASS $channel JNI API / socket protection capability / exact upstream source / adapter build")
                 finish(Activity.RESULT_OK, results)
                 return
             }
             if (arguments.getString("exitUpdate") == "true") {
-                check(NativeCore.request("version").optBoolean("socket_protection"))
+                val socketProtection = NativeCore.request("version").optBoolean("socket_protection")
+                check(socketProtection || arguments.getString("ciChannel") == "stable")
                 ProfileStore(context).load()
                 val profile = if (arguments.getString("exitEmulator") == "true") {
-                    CoreUpdates.setChannel(context, CoreChannel.CUSTOM)
+                    val channel = CoreChannel.entries.first { it.id == arguments.getString("ciChannel", "custom") }
+                    CoreUpdates.setChannel(context, channel)
                     ProfileStore(context).save("Emulator exit test", """
                         ipv4 = "10.211.50.2/24"
                         dhcp = false
@@ -78,8 +82,13 @@ class ProbeInstrumentation : Instrumentation() {
                 check(AppState.vpn.value.phase == "connected") { "VPN connection failed" }
                 Thread.sleep(5000)
                 val connectivity = context.getSystemService(android.net.ConnectivityManager::class.java)
-                check(connectivity.getNetworkCapabilities(connectivity.activeNetwork)
-                    ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true) { "App traffic still bypasses VPN" }
+                val appUsesVpn = connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+                    ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
+                check(appUsesVpn == socketProtection) { "Unexpected app VPN routing" }
+                if (arguments.getString("exitEmulator") == "true") {
+                    val response = exchangeOverShell("toybox nc -w 5 -W 10 -q 1 198.18.0.1 21130", "GET /exit-probe.txt HTTP/1.0\r\n\r\n")
+                    check(response.endsWith("exit-proxy-ok\n")) { "Exit-node packet forwarding failed" }
+                }
                 val channel = CoreUpdates.channel(context)
                 val catalog = CoreUpdates.readRemote(CoreCatalog.url(channel))
                 check(CoreCatalog.releases(context, catalog, channel).isNotEmpty())
@@ -87,7 +96,7 @@ class ProbeInstrumentation : Instrumentation() {
                 check(state.phase in listOf(UpdatePhase.CURRENT, UpdatePhase.AVAILABLE, UpdatePhase.READY))
                 val exitIp = String(CoreUpdates.readRemote("https://api4.ipify.org", 128)).trim()
                 arguments.getString("expectedExit")?.let { check(exitIp == it) { "Unexpected exit IP $exitIp" } }
-                results.putString("result", "PASS app UID uses VPN / GitHub signed catalog / downloadable core check / exit IP $exitIp")
+                results.putString("result", "PASS app VPN routing=$appUsesVpn / exit packets / GitHub signed catalog / downloadable core check / update request IP $exitIp")
                 finish(Activity.RESULT_OK, results)
                 return
             }
