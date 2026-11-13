@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 serial=emulator-5554
+report_failure() {
+  local status=$?
+  if [ "$status" -ne 0 ]; then
+    adb -s "$serial" logcat -d -b crash -t 250 || true
+    adb -s "$serial" shell dumpsys activity exit-info com.hfzy.easytier || true
+  fi
+  exit "$status"
+}
+trap report_failure EXIT
 adb -s "$serial" install -r app/build/outputs/apk/debug/app-debug.apk
 adb -s "$serial" install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb -s "$serial" shell appops set com.hfzy.easytier ACTIVATE_VPN allow
