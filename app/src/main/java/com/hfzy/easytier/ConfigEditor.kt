@@ -72,8 +72,7 @@ import org.json.JSONObject
                                     Icon(if (expanded || search.isNotEmpty()) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
                                 }
                                 if (expanded || search.isNotEmpty()) Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                                    @Suppress("UNUSED_VARIABLE") val observed = revision
-                                    shown.forEach { spec -> FieldControl(doc, spec, section.title + "." + spec.key) { revision++; error = "" } }
+                                    shown.forEach { spec -> FieldControl(doc, spec, section.title + "." + spec.key, revision) { revision++; error = "" } }
                                 }
                             }
                         }
@@ -91,7 +90,7 @@ private fun filterFields(fields: List<FieldSpec>, query: String): List<FieldSpec
     else filterFields(field.children, query).takeIf { it.isNotEmpty() }?.let { field.copy(children = it) }
 }
 
-@Composable private fun FieldControl(parent: JSONObject, spec: FieldSpec, path: String, onChange: () -> Unit) {
+@Composable private fun FieldControl(parent: JSONObject, spec: FieldSpec, path: String, revision: Int, onChange: () -> Unit) {
     val capabilities = remember { NativeCore.request("version") }
     val namedPortal = capabilities.optBoolean("portal_clients")
     val customCore = capabilities.optBoolean("custom")
@@ -129,7 +128,7 @@ private fun filterFields(fields: List<FieldSpec>, query: String): List<FieldSpec
                 children.forEach { child ->
                     // Do not insert empty optional tables just by opening the editor.
                     val nested = existing ?: JSONObject()
-                    FieldControl(nested, child, "$path.${child.key}") { parent.put(spec.key, nested); onChange() }
+                    FieldControl(nested, child, "$path.${child.key}", revision) { parent.put(spec.key, nested); onChange() }
                 }
             }
         }
@@ -148,7 +147,7 @@ private fun filterFields(fields: List<FieldSpec>, query: String): List<FieldSpec
                             IconButton(onClick = { entries.remove(index); parent.put(spec.key, entries); onChange() }) { Icon(Icons.Outlined.DeleteOutline, "移除") }
                         }
                         if (expanded) Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            spec.children.forEach { FieldControl(entry, it, "$path.$index.${it.key}", onChange) }
+                            spec.children.forEach { FieldControl(entry, it, "$path.$index.${it.key}", revision, onChange) }
                         }
                     }
                 }
